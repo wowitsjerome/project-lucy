@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dnsfilter.android"
+    android:installLocation="auto"
+    android:versionCode="1506106"
+    android:versionName="1.50.61.6">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+
+    <application
+        android:icon="@mipmap/ic_launcher"
+        android:label="personalDNSfilter"
+        android:theme="@style/Theme.phttpp.TitleBar"
+        android:usesCleartextTraffic="true"
+        android:name=".PersonalDNSFilterApp">
+
+        <activity
+            android:name=".dnsserverconfig.DNSServerConfigActivity"
+            android:theme="@style/Theme.phttpp.TitleBar.DNSConfig"
+            android:exported="false"
+            android:parentActivityName=".DNSProxyActivity">
+        </activity>
+
+        <activity
+            android:name=".DNSProxyActivity"
+            android:label="personalDNSfilter"
+            android:windowSoftInputMode="adjustPan"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".DNSFilterService"
+            android:foregroundServiceType="systemExempted|specialUse"
+            android:label="personalDNSfilterService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="false">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Filter DNS requests on the device for parental control or security reasons, the notification shows the status of the DNS Filter."/>
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".DNSFilterTileService"
+            android:enabled="false"
+            android:label="personalDNSfilter"
+            android:icon="@drawable/icon_disabled"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
+        <service
+            android:name=".StartServiceJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="true" >
+        </service>
+
+        <receiver
+            android:name=".BootUpReceiver"
+            android:enabled="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        
+    </application>
+
+</manifest>

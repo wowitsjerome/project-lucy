@@ -1,0 +1,2 @@
+# Lucy administrator rules. Each rule includes all subdomains.
+blocked.lucy.test

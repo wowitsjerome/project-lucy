@@ -1,0 +1,29 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "dnsfilter.android"
+        minSdkVersion 17
+        //noinspection EditedTargetSdkVersion
+        targetSdkVersion 36
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+        }
+    }
+    namespace 'dnsfilter.android'
+}
+
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}

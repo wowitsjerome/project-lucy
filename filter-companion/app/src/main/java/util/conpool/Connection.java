@@ -1,0 +1,553 @@
+ /* 
+ PersonalHttpProxy 1.5
+ PersonalDNSfilter 1.5
+ Copyright (C) 2013-2026 Ingo Zenz
+
+ This program is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public License
+ as published by the Free Software Foundation; either version 2
+ of the License, or (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+ Find the latest version at http://www.zenz-solutions.de/personalhttpproxy
+ Contact:i.z@gmx.net 
+ */
+
+package util.conpool;
+
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.Socket;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.nio.channels.SocketChannel;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.StringTokenizer;
+import java.util.Vector;
+
+import javax.net.ssl.SSLSocketFactory;
+
+import util.ExecutionEnvironment;
+import util.Logger;
+import util.TimeoutListener;
+import util.TimeoutTime;
+import util.TimoutNotificator;
+import util.http.DOHHttp2Util;
+
+
+ public class Connection implements TimeoutListener {
+
+	private Socket socket = null;
+	private InputStream socketIn;
+	private OutputStream socketOut;
+	private PooledConnectionInputStream in;
+	private PooledConnectionOutputStream out;
+	String poolKey;
+	TimeoutTime timeout;
+	boolean acquired = true;
+	boolean valid = true;
+	boolean ssl = false;
+	boolean doh2 = false;
+	private InetSocketAddress sadr;
+	private int conTimeout;
+	private SSLSocketFactory sslSocketFactory;
+	private Proxy proxy;
+	private int http2StreamID = 1;
+	private boolean isFresh = true;
+
+	private static int maxHttp2StreamID = 2147483647;
+
+	private static byte[] NO_IP = new byte[]{0,0,0,0};
+	private static HashMap connPooled = new HashMap();
+	private static HashSet connAcquired = new HashSet();
+	private static Hashtable CUSTOM_HOSTS = null;
+	private static String CUSTOM_HOSTS_FILE_NAME = null;
+	private static int  POOLTIMEOUT_SECONDS = 300;	
+	private static TimoutNotificator toNotify = TimoutNotificator.getNewInstance();
+
+	private Connection(String host, int port, int conTimeout, boolean ssl, SSLSocketFactory sslSocketFactory, Proxy proxy, boolean doh2) throws IOException {
+		InetAddress adr=null;
+		
+		if (CUSTOM_HOSTS != null)
+			adr = (InetAddress) CUSTOM_HOSTS.get(host);
+		if (adr == null)
+			if (proxy == Proxy.NO_PROXY) 
+				adr = InetAddress.getByName(host);			
+			else //leave name resolution to proxy!
+				adr = InetAddress.getByAddress(host, NO_IP);
+			
+		InetSocketAddress sadr = new InetSocketAddress(adr,port);
+		poolKey = poolKey(host,port,ssl,proxy, doh2);
+		initConnection(sadr,conTimeout, ssl,sslSocketFactory, proxy, doh2);
+		timeout = new TimeoutTime(toNotify);		
+	}
+
+	private Connection(InetSocketAddress sadr, int conTimeout, boolean ssl,SSLSocketFactory sslSocketFactory, Proxy proxy, boolean doh2) throws IOException {
+		poolKey = poolKey(sadr.getAddress().getHostAddress(),sadr.getPort(), ssl, proxy, doh2);
+		initConnection(sadr,conTimeout, ssl, sslSocketFactory, proxy, doh2);
+		timeout = new TimeoutTime(toNotify);		
+	}
+	
+	public static Connection connect(InetSocketAddress sadr, int conTimeout, boolean ssl, SSLSocketFactory sslSocketFactory, Proxy proxy, boolean doh2) throws IOException {
+
+		Connection con = poolRemove(poolKey(sadr.getAddress().getHostAddress(), sadr.getPort(), ssl, proxy, doh2));
+		if (con == null) {	
+			con = new Connection(sadr,conTimeout, ssl, sslSocketFactory, proxy, doh2);
+		}		
+		con.initStreams();
+		synchronized(connAcquired) {
+			connAcquired.add(con);
+		}
+		return con;
+	}
+	
+	public static Connection connect(InetSocketAddress sadr, int conTimeout) throws IOException {
+		return connect(sadr, conTimeout, false, null, Proxy.NO_PROXY, false);
+	}
+	
+	public static Connection connect(InetSocketAddress address)	throws IOException {
+		return connect(address,-1);
+	}
+	
+	public static Connection connect(String host, int port, int conTimeout, boolean ssl, SSLSocketFactory sslSocketFactory, Proxy proxy) throws IOException {
+
+		Connection con = poolRemove(poolKey(host, port, ssl, proxy,false));
+
+		if (con == null) {			
+			con = new Connection(host, port, conTimeout, ssl, sslSocketFactory, proxy, false);
+		}		
+		con.initStreams();
+		synchronized(connAcquired) {
+			connAcquired.add(con);
+		};
+		return con;
+	}
+	
+	public static Connection connect(String host, int port) throws IOException {
+		return connect(host,port,-1, false, null, Proxy.NO_PROXY);
+	}
+	
+	public static Connection connect(String host, int port, int conTimeout) throws IOException {
+		return connect(host,port,conTimeout, false, null, Proxy.NO_PROXY);
+	}
+	
+	
+	private static String poolKey (String host, int port, boolean ssl, Proxy proxy, boolean doh2) {
+		if (ssl)
+			return host+":"+port+":"+"ssl:"+proxy.hashCode()+":"+doh2;
+		else 
+			return host+":"+port+":"+"plain:"+proxy.hashCode()+":"+doh2;
+	}
+	
+	
+	public synchronized static void addCustomHost(InetAddress adr) {
+
+		if (CUSTOM_HOSTS == null)
+			CUSTOM_HOSTS = new Hashtable();
+		CUSTOM_HOSTS.put(adr.getHostName(), adr);		
+	}
+	
+	public static void setCustomHostsFile(String filename) {
+		CUSTOM_HOSTS_FILE_NAME = filename;
+		CUSTOM_HOSTS = getCustomHosts();
+	}
+
+	private static Hashtable getCustomHosts() {
+
+		if (CUSTOM_HOSTS_FILE_NAME == null)
+			return null;
+
+		File hostsFile = new File(ExecutionEnvironment.getEnvironment().getWorkDir()+CUSTOM_HOSTS_FILE_NAME);
+		String entry = null;
+		Hashtable custom_hosts = null;
+		BufferedReader fin = null;
+		try {
+			if (hostsFile.exists()) {
+				custom_hosts = new Hashtable();			
+				fin = new BufferedReader(new InputStreamReader(new FileInputStream(hostsFile)));
+				while ((entry = fin.readLine()) != null) {
+					String[] hostEntry = parseHosts(entry);
+					if (hostEntry != null)
+						custom_hosts.put(hostEntry[1], InetAddress.getByName(hostEntry[0]));
+				}
+			}
+		} catch (IOException ioe){
+			ioe.printStackTrace();
+		} finally{
+			if (fin != null) {
+				try {
+					fin.close();
+				} catch (IOException e) {
+					//ignore
+				}
+			}
+		}
+		return custom_hosts;
+	}
+		
+	private static String[] parseHosts(String line) {
+		if (line.startsWith("#")|| line.trim().equals(""))
+			return null;
+		StringTokenizer tokens = new StringTokenizer(line);
+		if (tokens.countTokens() >=2) {
+			String ip = tokens.nextToken().trim();
+			String host = tokens.nextToken().trim();			
+			return new String[]{ip,host};
+		} else { //list with plain hosts
+			String ip = "127.0.0.1";
+			String host = tokens.nextToken().trim();
+			return new String[]{ip,host};
+		}			
+		
+	}
+
+	private void initConnection(InetSocketAddress sadr, int conTimeout, boolean ssl, SSLSocketFactory sslSocketFactory, Proxy proxy, boolean doh2) throws IOException {
+
+		this.sadr = sadr;
+		this.conTimeout = conTimeout;
+		this.ssl = ssl;
+		this.sslSocketFactory = sslSocketFactory;
+		this.proxy = proxy;
+		this.doh2 = doh2;
+		establishConnection();
+	}
+
+	private static SSLSocketFactory defaultSSLSocketFactory = null;
+
+	private SSLSocketFactory getDefaultSSLSocketFactory() throws IOException {
+		 if (defaultSSLSocketFactory != null)
+		 	return defaultSSLSocketFactory;
+
+		boolean useTLSSocketFactory = ExecutionEnvironment.getEnvironment().getEnvironmentID() == 1
+				&& Integer.parseInt(ExecutionEnvironment.getEnvironment().getEnvironmentVersion())<21;
+		try {
+			if (useTLSSocketFactory) {
+				defaultSSLSocketFactory = new TLSSocketFactory();
+			} else{
+				defaultSSLSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+			}
+			return defaultSSLSocketFactory;
+		} catch (Exception e){
+			throw new IOException("Cannot get TLSSocketFactory", e);
+		}
+	}
+
+	private void establishConnection() throws IOException {
+		
+		if (conTimeout < 0)
+			conTimeout = 0;
+
+		if (doh2) {
+			socket = establishDOH2Connection();
+		} else {
+			if (proxy == Proxy.NO_PROXY) {
+				socket = SocketChannel.open().socket();
+				try {
+					ExecutionEnvironment.getEnvironment().protectSocket(socket, 0);
+					socket.connect(sadr, conTimeout);
+				} catch (IOException e) {
+					try { socket.close(); } catch (IOException ignore) {}
+					throw e;
+				}
+			} else {
+				if (!(proxy instanceof HttpProxy))
+					throw new IOException("Only " + HttpProxy.class.getName() + " supported for creating connection over tunnel!");
+				socket = ((HttpProxy) proxy).openTunnel(sadr, conTimeout, true);
+			}
+
+			//Logger.getLogger().logLine("NEW CONNECTION TO:"+socket);
+			if (ssl) {
+				try {
+					socket.setSoTimeout(conTimeout); // avoid endless hang in SSL Handshake
+					if (sslSocketFactory == null)
+						sslSocketFactory = getDefaultSSLSocketFactory();
+
+					socket = sslSocketFactory.createSocket(socket, sadr.getHostName(), sadr.getPort(), true);
+				} catch (IOException e) {
+					try { socket.close(); } catch (IOException ignore) {}
+					throw e;
+				}
+				this.ssl = true;
+			}
+		}
+		socketIn = socket.getInputStream();
+		socketOut = socket.getOutputStream();
+		if (ssl) 
+			socket.setSoTimeout(0); //reset the read timeout for the SSL handshake
+	}
+
+	private Socket establishDOH2Connection() throws IOException {
+		Socket s = DOHHttp2Util.openHttp2Socket(sadr, conTimeout, proxy);
+		http2StreamID = 1;
+		return s;
+	}
+
+	public void refreshConnection() throws IOException {
+
+		int sock_timeout = 0;
+		if (socket != null)
+			sock_timeout = socket.getSoTimeout();
+		// close existing connection
+		try {
+			in.invalidate();
+			out.invalidate();
+
+			if (!ssl) { //SSLSocket doesn't support this
+				socket.shutdownOutput();
+				socket.shutdownInput();
+			}
+			socket.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+		}
+
+		//establish new connection
+		establishConnection();
+		socket.setSoTimeout(sock_timeout);
+
+		initStreams();
+		isFresh = true;
+	}
+
+	public static void setPoolTimeoutSeconds(int secs) {
+		POOLTIMEOUT_SECONDS=secs;
+	}
+
+	private void initStreams() {
+		in = new PooledConnectionInputStream(socketIn);
+		out = new PooledConnectionOutputStream(socketOut);
+	}
+
+	public static void invalidate() {
+		Vector toBeReleased = new Vector();
+
+		synchronized (connPooled) {
+			synchronized (connAcquired) {
+
+				Vector[] destinations = (Vector[]) connPooled.values().toArray(new Vector[0]);
+				for (int i = 0; i < destinations.length; i++) {
+					Connection[] cons = (Connection[]) destinations[i].toArray(new Connection[destinations[i].size()]);
+					for (int ii = 0; ii < cons.length; ii++) {
+						toBeReleased.add(cons[ii]);
+						cons[ii].valid = false;
+						destinations[i].remove(cons[ii]);
+					}
+					connPooled.remove(destinations[i]);
+				}
+				Connection[] cons = (Connection[]) connAcquired.toArray(new Connection[connAcquired.size()]);
+				for (int i = 0; i < cons.length; i++) {
+					toBeReleased.add(cons[i]);
+					cons[i].valid = false;
+					connAcquired.remove(cons[i]);
+				}
+			}
+		}
+		Connection[] cons = (Connection[]) toBeReleased.toArray(new Connection[toBeReleased.size()]);
+		for (int i = 0; i < cons.length; i++)
+			cons[i].closeConnection();
+	}
+
+	
+	public static void poolReuse(Connection con) {
+		synchronized (connPooled) {
+			if (!con.valid)
+				return;
+			if (!con.acquired)
+				throw new IllegalStateException("Inconsistent connection state - Cannot release non acquired connection");
+			con.acquired=false;
+			Vector hostCons = (Vector) connPooled.get(con.poolKey);
+			if (hostCons == null) {
+				hostCons = new Vector();
+				connPooled.put(con.poolKey, hostCons);
+			}
+			toNotify.register(con);
+			con.timeout.setTimeout(POOLTIMEOUT_SECONDS*1000);
+			
+			hostCons.add(con);
+		}
+
+	}
+
+	public static Connection poolRemove(String key) {
+		
+		synchronized (connPooled) {
+			Vector hostCons = (Vector) connPooled.get(key);
+			if (hostCons == null) {
+				return null;
+			}
+			boolean found = false;
+			Connection con = null;
+			while (!found && !hostCons.isEmpty()) {
+				con = (Connection) hostCons.remove(hostCons.size() - 1);
+				if (con.acquired)
+					throw new IllegalStateException("Inconsistent connection state - Cannot take already acquired connection from pool!");
+				con.acquired=true;
+				toNotify.unregister(con);
+				found = con.valid && con.isAlive();
+				if (!found) {
+					con.closeConnection();
+					con = null;
+				}
+			}
+			if (hostCons.isEmpty())
+				connPooled.remove(key);
+			
+			return con;
+
+		}
+	}
+	
+	
+	private boolean isAlive() {
+		// Must only be called when sure that there is no data to read - otherwise Illegal State!
+		if (doh2)
+			return true;
+		try {
+			socket.setSoTimeout(1);
+			int r = socketIn.read();
+			if (r!=-1) {
+				int avail = socketIn.available();
+				byte buf[] = new byte [Math.max(avail, 10240)];
+				socketIn.read(buf);
+				String data = ((char)r)+new String(buf);				
+			}
+			return false;
+		} catch (SocketTimeoutException to) {
+			try {
+				socket.setSoTimeout(0);
+				return true;
+			} catch (SocketException e) {
+				return false;
+			}			
+		} catch (Exception e) {
+			return false;
+		}	
+	}
+
+
+
+	public OutputStream getOutputStream() {
+		return out;
+	}
+
+	public InputStream getInputStream() {
+		return in;
+	}
+
+	public void release(boolean reuse) {
+		
+		if (!valid) //a killed connection already released
+			return;
+
+		isFresh = false;
+
+		synchronized (connAcquired) {
+			connAcquired.remove(this);
+		}
+
+		if (reuse) {
+			in.invalidate();
+			out.invalidate();
+			if (doh2) {
+				if (http2StreamID >= maxHttp2StreamID) {
+					release(false);
+					return;
+				} else http2StreamID = http2StreamID+2;
+			}
+			try {
+				socket.setSoTimeout(0);
+			} catch (SocketException e) {
+				release(false);
+				return;
+			}
+			poolReuse(this);
+		} else  {
+			closeConnection();
+		}
+	}
+
+	private void closeConnection() {
+		try {
+			valid = false;
+			if (!ssl) { //SSLSocket doesn't support this
+				socket.shutdownOutput();
+				socket.shutdownInput();
+			}
+			socket.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+		}
+	}
+
+	public void setSoTimeout(int millis) throws SocketException {
+		socket.setSoTimeout(millis);
+	}
+
+
+	@Override
+	public void timeoutNotification() {
+		
+		boolean found = false;
+		
+		synchronized (connPooled) {
+			
+			Vector hostCons = (Vector) connPooled.get(poolKey);
+			if (hostCons == null) {
+				return;
+			}	
+			found = hostCons.remove(this);	
+			if (hostCons.isEmpty())
+				connPooled.remove(poolKey);
+		}
+		if (found) //if false, than connection was just taken by another thread
+			closeConnection();
+	}
+
+	@Override
+	public long getTimoutTime() {
+		// TODO Auto-generated method stub
+		return timeout.getTimeout();
+	}
+	
+
+	
+	// return count of received and sent bytes
+	public long[] getTraffic() {
+		if (!acquired)
+			throw new IllegalStateException("Inconsistent connection state - Connection is not acquired!");
+		return new long[] {in.getTraffic(),out.getTraffic()};
+	}
+	
+	
+	// return destination (host:port:transport:proxy)
+	public String getDestination() {
+		return poolKey;
+	}
+
+	public int getHttp2StreamID() {
+		return http2StreamID;
+	}
+
+	public boolean isFresh() {
+		return isFresh;
+	}
+}

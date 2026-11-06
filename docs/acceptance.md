@@ -13,6 +13,14 @@ Status: onboarding/administration revision implemented for local development; ve
 
 ## Evidence and scope
 
+### OEM in-call interface support · 0.3.7 · 2026-11-06
+
+- Installed on Samsung SM-S918U after an outgoing call could connect while lockdown blocked Samsung's separate `com.samsung.android.incallui` activity, leaving no on-device call controls.
+- Lucy now discovers trusted system/default-dialer services that declare the standard `android.telecom.IN_CALL_SERVICE_UI` metadata, keeps those packages available, and includes them in the lock-task allowlist. Existing managed policies migrate automatically; ordinary third-party calling apps do not gain access through this rule.
+- The physical upgrade migrated policy revision 13 to 14. `com.samsung.android.incallui` was unhidden, unsuspended, recorded as system in-call support, and present in the active lock-task package list with no policy errors.
+- Physical verification passed: an outgoing call displayed the full Samsung in-call interface and the user could control and end the call while daily lockdown remained active.
+- Main unit tests, Android lint, debug/instrumentation/release compilation, and diff checks passed. `CallUiSupportTest` compiled; replacing the installed test APK after lockdown restoration was correctly rejected by the installation restriction, so the live policy read-back and manual call supplied the physical evidence.
+
 ### Daily Wi-Fi controls · 0.3.6 · 2026-11-02
 
 - Installed on Samsung SM-S918U. `WifiControlsTest.dailyWifiControlsKeepPolicyEnforced` passed on the physical phone: reached Device controls → Wi-Fi without authentication, toggled Wi-Fi, restored its initial enabled state, and returned HOME. Lock task stayed active, the package allowlist stayed unchanged, installation restrictions stayed enforced, unrestricted Settings remained unapproved, and no maintenance lease was created.

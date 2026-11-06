@@ -15,6 +15,11 @@ data class DevicePolicy(
     val dnsHost: String = DNS_HOST,
 ) {
     fun lockPackages(ownPackage: String) = (apps.map { it.packageName } + activitySupport + ownPackage).toSet()
+    fun requiringActivitySupport(packages: Set<String>, purpose: String): DevicePolicy {
+        if (packages.isEmpty()) return this
+        return copy(support = support + packages.associateWith { purpose }, activitySupport = activitySupport + packages,
+            blocked = blocked - packages)
+    }
     /** Removing an optional app during supervised maintenance is also a request to remove it from daily policy. */
     fun pruningMissingOptionalApps(installed: Set<String>): DevicePolicy {
         val remaining = apps.filter { it.essential || it.packageName in installed }

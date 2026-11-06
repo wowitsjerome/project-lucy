@@ -19,6 +19,14 @@ class PolicyRulesTest {
         assertThrows(IllegalArgumentException::class.java) { DevicePolicy.fromJson(policy.toJson().put("schemaVersion", 2)) }
     }
     @Test fun supportDoesNotAutomaticallyGainActivityAccess() { assertFalse("provider" in policy.lockPackages("lucy")) }
+    @Test fun requiredSystemActivitySupportIsAllowedAndUnblocked() {
+        val upgraded = policy.copy(blocked = policy.blocked + "incall").requiringActivitySupport(setOf("incall"), "System in-call interface")
+        assertEquals("System in-call interface", upgraded.support["incall"])
+        assertTrue("incall" in upgraded.activitySupport)
+        assertTrue("incall" in upgraded.lockPackages("lucy"))
+        assertFalse("incall" in upgraded.blocked)
+        assertTrue(validate(upgraded).isEmpty())
+    }
     @Test fun missingOptionalAppsArePrunedButEssentialAppsRemain() {
         val optional = AppEntry("calendar", "Calendar", "Calendar")
         val withOptional = policy.copy(apps = policy.apps + optional)

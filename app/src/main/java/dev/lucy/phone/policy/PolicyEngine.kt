@@ -80,8 +80,9 @@ class PolicyEngine(private val app: LucyApp) {
     fun currentPolicy(): DevicePolicy {
         val saved = store.policy() ?: store.read().optJSONObject("pending")?.let(DevicePolicy::fromJson)
             ?: store.read().optJSONObject("launcherPreview")?.let(DevicePolicy::fromJson) ?: inventory.initial()
-        val support = saved.support + inventory.criticalSupport()
-        return saved.copy(support = support, blocked = saved.blocked - support.keys)
+        val required = inventory.withRequiredSystemSupport(saved)
+        val support = required.support + inventory.criticalSupport()
+        return required.copy(support = support, blocked = required.blocked - support.keys - required.activitySupport)
     }
     fun lockTaskRunning() = app.getSystemService(ActivityManager::class.java).lockTaskModeState == ActivityManager.LOCK_TASK_MODE_LOCKED
     fun canScheduleMaintenance() = Build.VERSION.SDK_INT < 31 || app.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
@@ -255,12 +256,14 @@ class PolicyEngine(private val app: LucyApp) {
             store.update { it.put("restoreRequired", true); it.remove("maintenance") }
             store.log("Daily restrictions restored after maintenance or process restart")
         }
+        val stored = store.policy()
         val policy = currentPolicy()
         val installed = inventory.apps(policy).map { it.packageName }.toSet()
         val available = policy.pruningMissingOptionalApps(installed)
         val blocked = inventory.blockedFor(available)
-        val changed = available.apps != policy.apps || blocked != policy.blocked
-        val candidate = if (changed) available.copy(revision = policy.revision + 1, blocked = blocked) else policy
+        val normalized = available.copy(blocked = blocked)
+        val changed = stored == null || normalized.copy(revision = stored.revision) != stored
+        val candidate = if (changed) normalized.copy(revision = policy.revision + 1) else policy
         if (available.apps != policy.apps) {
             val removed = (policy.apps - available.apps.toSet()).joinToString { it.label }
             store.update { state ->

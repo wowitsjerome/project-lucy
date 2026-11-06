@@ -1,6 +1,7 @@
 @file:Suppress("DEPRECATION")
 package dev.lucy.phone.policy
 
+import android.Manifest
 import android.app.role.RoleManager
 import android.content.ComponentName
 import android.content.Context
@@ -62,10 +63,27 @@ class PackageInventory(private val context: Context) {
         listOf(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")).mapNotNull(::resolve).forEach {
             support[it] = "System picker or emergency calling"; activitySupport += it
         }
-        val policy = DevicePolicy(baseline = "${Build.MANUFACTURER}/${Build.MODEL} • Android ${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT}) • ${Build.DISPLAY}",
+        val policy = withRequiredSystemSupport(DevicePolicy(baseline = "${Build.MANUFACTURER}/${Build.MODEL} • Android ${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT}) • ${Build.DISPLAY}",
             apps = visible, support = support, activitySupport = activitySupport - forbidden(), blocked = emptySet())
+        )
         return policy.copy(blocked = blockedFor(policy, all))
     }
+    internal fun inCallUiPackages(): Set<String> = runCatching {
+        val defaultDialer = context.getSystemService(TelecomManager::class.java).defaultDialerPackage
+        pm.queryIntentServices(Intent("android.telecom.InCallService"), flags or PackageManager.GET_META_DATA).mapNotNull { result ->
+            val service = result.serviceInfo ?: return@mapNotNull null
+            val applicationFlags = service.applicationInfo.flags
+            val trustedSystemPackage = applicationFlags and
+                (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            service.packageName.takeIf {
+                service.permission == Manifest.permission.BIND_INCALL_SERVICE &&
+                    service.metaData?.getBoolean("android.telecom.IN_CALL_SERVICE_UI") == true &&
+                    (trustedSystemPackage || service.packageName == defaultDialer)
+            }
+        }.toSet()
+    }.getOrDefault(emptySet())
+    fun withRequiredSystemSupport(policy: DevicePolicy): DevicePolicy =
+        policy.requiringActivitySupport(inCallUiPackages(), "System in-call interface")
     fun criticalSupport(): Map<String, String> = listOf("com.google.android.gms", "com.android.providers.contacts",
         "com.android.providers.telephony", "com.android.providers.media", "com.google.android.providers.media.module",
         "com.android.providers.downloads", "com.google.android.webview", "com.android.webview", "com.android.stk",

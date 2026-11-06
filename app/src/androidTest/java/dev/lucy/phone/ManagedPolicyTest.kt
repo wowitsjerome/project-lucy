@@ -11,6 +11,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.lucy.phone.configuration.Passwords
+import dev.lucy.phone.configuration.Totp
 import dev.lucy.phone.launcher.HomeActivity
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -56,9 +57,33 @@ class ManagedPolicyTest {
         runCatching { app.engine.reconcile() }
         assertEquals(revision, app.engine.currentPolicy().revision)
         assertDeviceControls(app)
+        val enrollment = app.auth.beginTotpEnrollment(session)
+        val encodedSecret = android.net.Uri.parse(enrollment.uri).getQueryParameter("secret")!!
+        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+        var buffer = 0
+        var bits = 0
+        val decodedSecret = ArrayList<Byte>()
+        encodedSecret.forEach { character ->
+            buffer = (buffer shl 5) or alphabet.indexOf(character)
+            bits += 5
+            if (bits >= 8) {
+                decodedSecret += ((buffer shr (bits - 8)) and 0xff).toByte()
+                bits -= 8
+            }
+        }
+        val secret = decodedSecret.toByteArray()
+        val currentStep = System.currentTimeMillis() / 1000 / Totp.PERIOD_SECONDS
+        app.auth.confirmTotpEnrollment(session, Totp.code(secret, currentStep))
+        assertTrue(app.auth.totpConfigured())
+        app.auth.lock()
+        val totpSession = app.auth.unlockTotp(Totp.code(secret, currentStep + 1))
+        assertTrue(app.auth.validSession(totpSession))
+        assertThrows(IllegalStateException::class.java) { app.auth.unlockTotp(Totp.code(secret, currentStep + 1)) }
+        app.auth.lock()
         val nextPin = pin.reversed()
         val nextRecovery = app.auth.recover(recovery, nextPin)
         assertNotEquals(recovery, nextRecovery)
+        assertFalse("Recovery must remove an enrolled authenticator", app.auth.totpConfigured())
         assertFalse(app.auth.validSession(session))
         assertThrows(IllegalStateException::class.java) { app.auth.recover(recovery, pin) }
         val nextSession = app.auth.unlock(nextPin)

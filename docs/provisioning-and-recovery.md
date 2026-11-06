@@ -7,7 +7,7 @@ Use the isolated `Lucy_Managed` emulator only. Owner provisioning changes device
 1. Build with `bash scripts/check.sh`.
 2. Start `node scripts/emulator.mjs managed` and wait for Android to boot.
 3. Run `node scripts/device.mjs install emulator-5582`, then `node scripts/device.mjs owner emulator-5582`. Do this before adding Google accounts or profiles.
-4. In Lucy, open Administration. Create an eight-digit-or-longer PIN and save the generated recovery code offline. Neither credential is preset.
+4. In Lucy, open Administration. Create an eight-digit-or-longer backup PIN and save the generated recovery code offline. Neither credential is preset. Then open **Security & recovery**, enroll the trusted administrator's authenticator from the one-time QR code, and verify a current code before handoff.
 5. Set a **separate Android screen-lock PIN** with the setup button. Allow Lucy under **Alarms & reminders** using “Allow maintenance timer” if it is not already exempt.
 6. Follow [the onboarding walkthrough](onboarding.md): Connect & accounts → Choose & set up apps → Test filtering → Review & finish. Install apps and sign into accounts before enabling daily mode. App choices persist as a draft.
 7. First activation requires the checklist, screen lock, timer, and a live filtering pass. A failed test leaves setup unlocked. Confirm the resulting state. “Development · ADB enabled” identifies the debug exception; “Attention required” means verification is incomplete.
@@ -89,7 +89,7 @@ No APK has been hosted or deployed by this repository. Google Play EMM enrollmen
 
 Authenticate → Open supervised setup → retain physical custody → install/update/sign in → review/apply draft (or end session without applying) → verify status.
 
-Maintenance temporarily permits installation and unhides blocked apps, including Play/browser. DNS stays filtered unless the administrator separately confirms a warned, at-most-15-minute temporary-internet exception. Strict DNS restores on expiry/completion/restart, even when offline; the earlier deadline wins. Administration locks when leaving Lucy; authenticate again on return. The maintenance lease is independent of the two-minute admin session and lasts at most 30 minutes. An exact alarm plus foreground service handles expiry; startup/boot/update restoration uses the persisted policy. If timer access is unavailable, timed exceptions are refused.
+Maintenance temporarily permits installation and unhides blocked apps, including Play/browser. DNS stays filtered unless the administrator separately confirms a warned, at-most-15-minute temporary-internet exception. Strict DNS restores on expiry/completion/restart, even when offline; the earlier deadline wins. Administration locks when leaving Lucy; authenticate again on return after the 30-second inactivity window. The maintenance lease is independent of the admin UI session and lasts at most 30 minutes. An exact alarm plus foreground service handles expiry; startup/boot/update restoration uses the persisted policy. If timer access is unavailable, timed exceptions are refused.
 
 The installed-app list can be changed without rebuilding. Removing an essential app is rejected. New optional packages appear after installation/refresh and require selection plus checklist review. System/role dependencies are retained separately from visible applications. Apply the draft directly from maintenance, or end maintenance without applying it to restore the existing list and retain the draft.
 
@@ -97,7 +97,8 @@ Update third-party apps through Play. Update Lucy with the same signing key and 
 
 ## Recovery and decommissioning
 
-- Forgotten PIN: “Use recovery code” rotates the PIN and issues a replacement code. The previous code stops working. Failed recovery attempts share the PIN backoff.
+- Lost authenticator: choose **Use backup PIN** on the Administration login screen, then replace or disable the authenticator under **Security & recovery**. Enrollment is not active until a code from the new entry verifies successfully.
+- Forgotten backup PIN: **Use recovery code** rotates the PIN, issues a replacement recovery code, and disables the enrolled authenticator so the owner can establish trusted access again. The previous recovery code stops working. Authenticator, PIN, and recovery failures share the same persistent backoff.
 - Interrupted maintenance: reopen Lucy or reboot. Confirm restrictions restore and errors are visible. Do not return the phone while verification is incomplete.
 - DNS unavailable: use another network that permits DNS-over-TLS to `family.cloudflare-dns.com:853`. Explicit temporary setup internet can enable sign-in/install work; it cannot complete managed onboarding or count as a filtering pass. Lucy never switches to unfiltered DNS automatically.
 - Broken DPC or lost PIN and recovery code: use the device-specific recovery/reset procedure recorded during hardware testing. This deletes data and may require the previously associated Google account. Do not assume factory reset removes FRP requirements.

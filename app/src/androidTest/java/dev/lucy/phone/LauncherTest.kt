@@ -27,8 +27,9 @@ class LauncherTest {
             }
         }
         shell("input keyevent KEYCODE_HOME")
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("L U C Y").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Administration").assertIsDisplayed()
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNodeWithText("Administration").assertIsDisplayed(); true }.getOrDefault(false)
+        }
     }
     @Test fun homeAndControlsAreUsable() {
         compose.waitUntil(20_000) { compose.onAllNodesWithTag("status").fetchSemanticsNodes().isNotEmpty() }
@@ -39,8 +40,8 @@ class LauncherTest {
         compose.onNodeWithTag("appearance:LIGHT").assertExists()
         compose.onNodeWithTag("appearance:DARK").assertExists()
         compose.onNodeWithText("Launcher brightness").assertIsDisplayed()
-        compose.onNodeWithText("Volume +").assertIsDisplayed()
-        compose.onNodeWithText("Choose Home screen apps").performClick()
+        compose.onNodeWithText("Volume +").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Choose Home screen apps").performScrollTo().performClick()
         compose.onNodeWithText("Home screen apps").assertIsDisplayed()
         compose.onNodeWithText("Choose which administrator-approved apps appear on Lucy Home. Hiding an app does not uninstall it or revoke its approved access.").assertIsDisplayed()
         compose.onNodeWithText("← Phone controls").performClick()
@@ -55,11 +56,11 @@ class LauncherTest {
         try {
             compose.waitUntil(20_000) { compose.onAllNodesWithText("Phone controls").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Phone controls").performClick()
-            compose.onNodeWithTag("appearance:${changed.name}").performClick().assertIsOn()
+            compose.onNodeWithTag("appearance:${changed.name}").performClick().assertIsSelected()
             compose.activityRule.scenario.recreate()
             compose.waitUntil(20_000) { compose.onAllNodesWithText("Phone controls").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Phone controls").performClick()
-            compose.onNodeWithTag("appearance:${changed.name}").assertIsOn()
+            compose.onNodeWithTag("appearance:${changed.name}").assertIsSelected()
         } finally {
             app.appearance.set(original)
         }

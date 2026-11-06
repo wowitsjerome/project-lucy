@@ -8,11 +8,11 @@ Choose **launcher preview** to explore the interface without restrictions. Choos
 
 Lucy supports signing into Google and individual apps, including selecting an account or workspace inside an app. It does not support extra Android users, corporate work-profile enrollment, or mandatory corporate VPNs in this version. Account credentials stay in the app/Android sign-in screen; Lucy does not collect them.
 
-Create a separate administrator PIN, save the one-time recovery code offline, and set an Android screen-lock PIN. These are different credentials; neither has a default. Allow Lucy under **Alarms & reminders** so timed supervision can expire reliably.
+Create a separate backup administrator PIN, save the one-time recovery code offline, and set an Android screen-lock PIN. These are different credentials; neither has a default. After initial setup, enroll the trusted administrator's authenticator under **Administration → Security & recovery**. Scan the one-time QR code, or reveal and transmit the grouped setup key through a trusted encrypted channel, then verify a current code before leaving the page. Allow Lucy under **Alarms & reminders** so timed supervision can expire reliably.
 
-On startup, **Loading administration…** stays disabled until Lucy reads the saved setup. An existing administrator is sent to the existing-PIN screen, never new-PIN setup. A read failure or a managed device with missing credentials shows **Administrator access unavailable** with a retry option; it does not reset credentials. New-PIN setup is offered only after confirming there is no administrator and no active managed policy.
+On startup, **Loading administration…** stays disabled until Lucy reads the saved setup. An existing administrator is sent to authenticator login when enrolled, or backup-PIN login otherwise—never new-PIN setup. A read failure or a managed device with missing credentials shows **Administrator access unavailable** with a retry option; it does not reset credentials. New-PIN setup is offered only after confirming there is no administrator and no active managed policy.
 
-Successful PIN entry creates a two-minute in-memory administrator session. Returning to Administration during that window does not require the PIN again, including after visiting Home or a setup tool opened by Lucy. An unrelated app switch hides the management UI but does not discard an otherwise-valid token. Use **Lock administration** before handing the phone back. Expiry, activity recreation, process restart, or credential changes also require the PIN again. Lucy's supervised-setup task transition has a one-time, 15-second in-process handoff so recreating Home during that transition does not demand the PIN again. The UI session never extends the separate supervised-maintenance lease or relaxes policy by itself.
+Successful authenticator or backup-PIN entry creates the same 30-second inactivity window. Returning to Administration during that window does not require another code, including after visiting Home or a setup tool opened by Lucy; interaction within Administration refreshes it. An unrelated app switch hides the management UI but does not discard an otherwise-valid token. Use **Lock administration** before handing the phone back. Expiry, activity recreation, process restart, or credential changes require authentication again. Lucy's supervised-setup task transition has a one-time, 15-second in-process handoff so recreating Home during that transition does not demand another code. The UI session never extends the separate supervised-maintenance lease or relaxes policy by itself.
 
 ## Everyday Home choices versus administration
 
@@ -20,7 +20,7 @@ Successful PIN entry creates a two-minute in-memory administrator session. Retur
 
 **Appearance** in Phone controls offers System, Light, and Dark. System follows Android's current appearance; Light and Dark override it for Lucy screens only. The choice persists across app restarts and device reboots and does not change which apps are approved or relax any managed policy.
 
-**Administration** remains PIN-protected. It controls the security allowlist, installation and updates, accounts and Android settings, filtering, maintenance, diagnostics, and recovery. Newly approved apps start visible on Home. Removing approval also removes the app from Home and daily lock-task access. Existing Home visibility choices are preserved when other allowlist changes are applied.
+**Administration** remains authenticated. After enrollment, a six-digit authenticator code is the default and the backup PIN is available only through an explicit option. It controls the security allowlist, installation and updates, accounts and Android settings, filtering, maintenance, diagnostics, and recovery. Newly approved apps start visible on Home. Removing approval also removes the app from Home and daily lock-task access. Existing Home visibility choices are preserved when other allowlist changes are applied.
 
 ## The four onboarding pages
 
@@ -82,7 +82,7 @@ For an optional browser cross-check, use the three named link buttons during sup
 
 ## Returning to administration later
 
-Open **Administration → Open supervised setup**, authenticate, and confirm physical custody. A 30-minute session exposes Settings, Play, and browser tools. Filtered DNS stays active unless you separately confirm temporary internet. The two-minute administrator UI session and the longer maintenance lease are separate: Lucy-launched sign-in/setup tools reuse the UI session only while it remains active, and UI-session expiry does not end or extend maintenance.
+Open **Administration → Open supervised setup**, authenticate, and confirm physical custody. A 30-minute session exposes Settings, Play, and browser tools. Filtered DNS stays active unless you separately confirm temporary internet. The 30-second administrator UI session and the longer maintenance lease are separate: Lucy-launched sign-in/setup tools reuse the UI session only while it remains active, and UI-session expiry does not end or extend maintenance.
 
 Install/update/sign in → refresh/approve apps → confirm their setup → test filtering → **Apply draft & return to daily mode**. Applying a draft can end maintenance directly; there is no need to hide an app again before it can be approved.
 

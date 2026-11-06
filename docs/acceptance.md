@@ -8,10 +8,19 @@ Status: onboarding/administration revision implemented for local development; ve
 - Build: Gradle 8.13, AGP 8.13.2, Kotlin 2.1.20, compile/target SDK 35, minimum API 30.
 - Emulators: isolated `Lucy_Launcher` (5580) and `Lucy_Managed` (5582).
 - System image: Google Play ARM64 Android 16/API 36, build `BE2A.250530.026.D1`.
-- App: `dev.lucy.phone`, version 0.3.12; debug/test-only policy deliberately retains ADB. Earlier-version evidence below is historical unless explicitly rerun.
+- App: `dev.lucy.phone`, version 0.4.0; debug/test-only policy deliberately retains ADB. Earlier-version evidence below is historical unless explicitly rerun.
 - Physical baseline used for the latest focused checks: Samsung SM-S918U, Android 14. Broader carrier/device certification remains outstanding.
 
 ## Evidence and scope
+
+### Authenticator-first administrator access · 0.4.0 · 2026-11-06
+
+- Added local RFC 6238 TOTP enrollment under **Administration → Security & recovery**. Lucy shows the provisioning QR or an explicitly revealed grouped manual setup key only for the active in-memory enrollment, requires a valid six-digit code before enabling it, accepts SHA-1/30-second codes with a one-step clock-skew window, and defaults subsequent Administration login to the authenticator. The administrator PIN remains behind an explicit **Use backup PIN** action.
+- The 160-bit TOTP secret is encrypted at rest with an app-specific Android Keystore AES-256-GCM key. The verifier secret is absent from `admin.json`, policy state, and logs. Leaving or locking Administration clears pending enrollment material; recovery rotates the PIN/recovery code and disables the enrolled authenticator.
+- Authenticator, PIN, and recovery failures share the existing persistent exponential backoff. Each accepted TOTP time-step is persisted and cannot be accepted again. Authenticator success issues only a 30-second inactivity-based in-memory admin token; interaction within Administration refreshes it, while supervised maintenance and temporary-internet authorization remain separate.
+- `bash scripts/check.sh` passed: debug and release assembly, unit tests, Android lint, instrumentation compilation, and helper syntax. Unit coverage includes RFC 6238 vectors, Base32/provisioning compatibility, malformed input, clock skew, and replay rejection.
+- On the isolated `Lucy_Launcher` emulator, `TotpSecretStoreTest` passed and confirmed Keystore encryption round-trips without plaintext or Base64-plaintext persistence. The opt-in `AuthenticatorFlowTest` passed from a fully uninstalled/reinstalled Lucy fixture and exercised setup, verified enrollment, authenticator-first UI login, replay rejection, the rendered QR screen, the explicit backup-PIN option, and recovery disabling TOTP. All three existing `LauncherTest` UI regressions also passed after the flow.
+- Upgraded the connected Samsung SM-S918U in place from 0.3.12 (versionCode 17) to 0.4.0 (versionCode 18) during supervised maintenance, then installed the tested same-version revision containing the manual setup key and 30-second inactivity window. The installed APK SHA-256 exactly matched the tested local artifact. The upgrades preserved PIN/recovery verifiers, the enrolled TOTP state with zero failed attempts, and all 33 allowed/Home apps. Process-restart reconciliation removed the maintenance lease, restored lock task, retained policy revision 17, and reported no policy errors or pending restoration.
 
 ### Persisted appearance modes · 0.3.12 · 2026-11-06
 

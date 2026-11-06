@@ -5,6 +5,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SecurityTest {
+    @Test fun administratorSessionUsesThirtySecondInactivityWindow() {
+        assertEquals(30_000L, ADMIN_SESSION_TIMEOUT_MILLIS)
+        assertTrue(adminSessionActive(29_999, 0))
+        assertFalse(adminSessionActive(30_000, 0))
+    }
     @Test fun fifthFailureStartsThrottleAndBackoffCaps() {
         var state = AttemptState(boot = 1)
         repeat(4) { state = state.failed(1000, 1); assertEquals(0, state.remaining(1000)) }

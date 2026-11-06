@@ -93,12 +93,30 @@ class PolicyEngine(private val app: LucyApp) {
         val prior = currentPolicy()
         val catalog = inventory.apps(prior).associateBy { it.packageName }
         require(selected.all { it in catalog && inventory.exists(it) }) { "A selected app is missing. Refresh the app list." }
-        val candidate = prior.copy(revision = prior.revision + 1, apps = selected.map { catalog.getValue(it) })
+        val apps = selected.map { catalog.getValue(it) }
+        val newlyAllowed = selected - prior.apps.map { it.packageName }.toSet()
+        val requiredOnHome = apps.filter { it.essential }.map { it.packageName }.toSet()
+        val homePackages = prior.homePackages.intersect(selected) + newlyAllowed + requiredOnHome
+        val candidate = prior.copy(revision = prior.revision + 1, apps = apps, homePackages = homePackages)
             .let { it.copy(blocked = inventory.blockedFor(it)) }
         val required = prior.apps.filter { it.essential }.map { it.packageName }.toSet() + inventory.essentialPackages()
         val errors = PolicyRules.validate(candidate, required, app.packageName, inventory.forbidden())
         require(errors.isEmpty()) { errors.joinToString("; ") }
         return candidate
+    }
+    @Synchronized fun saveHomeSelection(selected: Set<String>) {
+        val prior = currentPolicy()
+        val allowed = prior.apps.map { it.packageName }.toSet()
+        val required = prior.apps.filter { it.essential }.map { it.packageName }.toSet()
+        require(selected.all { it in allowed }) { "Only administrator-approved apps can appear on Home" }
+        require(selected.containsAll(required)) { "Required phone applications must remain on Home" }
+        val candidate = prior.copy(homePackages = selected)
+        store.update { state ->
+            val key = if (state.optJSONObject("effective") != null) "effective" else "launcherPreview"
+            state.put(key, candidate.toJson())
+        }
+        store.log("Updated Home app visibility")
+        app.changed()
     }
     @Synchronized fun saveDraft(session: String, selected: Set<String>) {
         app.auth.requireSession(session)
@@ -138,9 +156,7 @@ class PolicyEngine(private val app: LucyApp) {
     @Synchronized fun saveLauncherList(session: String, selected: Set<String>) {
         app.auth.requireSession(session)
         check(!store.configured()) { "Use managed policy controls" }
-        val prior = currentPolicy()
-        val catalog = inventory.apps(prior).associateBy { it.packageName }
-        val candidate = prior.copy(apps = selected.mapNotNull(catalog::get), revision = prior.revision + 1)
+        val candidate = selectedPolicy(selected)
         require(candidate.apps.isNotEmpty()) { "Select at least one application" }
         store.update { it.put("launcherPreview", candidate.toJson()) }
         app.changed()
@@ -155,7 +171,10 @@ class PolicyEngine(private val app: LucyApp) {
         val prior = currentPolicy()
         val catalog = inventory.apps(prior).associateBy { it.packageName }
         val apps = selected.mapNotNull(catalog::get)
-        val candidate = prior.copy(revision = prior.revision + 1, apps = apps)
+        val newlyAllowed = selected - prior.apps.map { it.packageName }.toSet()
+        val requiredOnHome = apps.filter { it.essential }.map { it.packageName }.toSet()
+        val homePackages = prior.homePackages.intersect(selected) + newlyAllowed + requiredOnHome
+        val candidate = prior.copy(revision = prior.revision + 1, apps = apps, homePackages = homePackages)
             .let { it.copy(blocked = inventory.blockedFor(it)) }
         val essential = prior.apps.filter { it.essential }.map { it.packageName }.toSet() + inventory.essentialPackages()
         val errors = PolicyRules.validate(candidate, essential, app.packageName, inventory.forbidden())
@@ -262,7 +281,8 @@ class PolicyEngine(private val app: LucyApp) {
         val available = policy.pruningMissingOptionalApps(installed)
         val blocked = inventory.blockedFor(available)
         val normalized = available.copy(blocked = blocked)
-        val changed = stored == null || normalized.copy(revision = stored.revision) != stored
+        val missingHomeMigration = store.read().optJSONObject("effective")?.has("homePackages") != true
+        val changed = stored == null || missingHomeMigration || normalized.copy(revision = stored.revision) != stored
         val candidate = if (changed) normalized.copy(revision = policy.revision + 1) else policy
         if (available.apps != policy.apps) {
             val removed = (policy.apps - available.apps.toSet()).joinToString { it.label }

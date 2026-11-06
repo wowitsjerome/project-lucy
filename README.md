@@ -2,11 +2,13 @@
 
 A native Android minimalist launcher and local Device Policy Controller. Kotlin, Compose, Android 11+.
 
-**Daily Wi-Fi (0.3.6):** Home → Device controls → Wi-Fi works without administrator authentication. Toggle Wi-Fi, select a saved or nearby network, or enter an SSID and password. Nearby scans require Android Location to be enabled; Lucy offers an explicit button when it is off. Enterprise and legacy WEP setup still require administrator assistance. Network passwords go to Android's Wi-Fi configuration and are not stored in Lucy's policy or logs. Filtering and daily app restrictions remain active.
+**Daily Wi-Fi (0.3.6):** Home → Phone controls → Wi-Fi works without administrator authentication. Toggle Wi-Fi, select a saved or nearby network, or enter an SSID and password. Nearby scans require Android Location to be enabled; Lucy offers an explicit button when it is off. Enterprise and legacy WEP setup still require administrator assistance. Network passwords go to Android's Wi-Fi configuration and are not stored in Lucy's policy or logs. Filtering and daily app restrictions remain active.
+
+**Home and administration (0.3.9):** **Phone controls → Choose Home screen apps** lets the everyday user show or hide apps that an administrator has already approved. The administrator PIN is still required to add or approve apps, install software, open system setup, change filtering, or use recovery tools. Required phone apps stay on Home, new approvals start visible, existing Home choices survive later allowlist changes, and Home apps are sorted alphabetically.
 
 **Start with launcher mode in the emulator.** Managed mode is implemented but is not certified for daily physical-phone use. See [acceptance results](docs/acceptance.md) for tested behavior and remaining gates.
 
-**Onboarding:** read [the administrator walkthrough](docs/onboarding.md). The flow is **Connect & accounts → Choose & set up apps → Test filtering → Review & finish**. Do not enable daily restrictions before installing, signing in, and verifying internet access.
+**Onboarding:** read [the administrator walkthrough](docs/onboarding.md). The flow is **Connect & accounts → Allow & set up apps → Test filtering → Review & finish**. Do not enable daily restrictions before installing, signing in, and verifying internet access.
 
 ## Run locally
 
@@ -24,7 +26,7 @@ Keep that emulator running. In another terminal:
 node scripts/device.mjs install emulator-5580
 ```
 
-Lucy becomes the virtual phone's HOME app. App buttons launch installed Android apps; Home returns to Lucy. Administration lets you create a PIN and choose visible apps. Launcher mode does not change device policies. No default administrator credential is built in.
+Lucy becomes the virtual phone's HOME app. App buttons launch installed Android apps; Home returns to Lucy. **Phone controls** covers everyday sound, display, Wi-Fi, and Home-screen choices; **Administration** uses a PIN to control which apps are approved and access setup tools. Launcher mode does not change device policies. No default administrator credential is built in.
 
 Alternatively, open this directory in Android Studio, select a virtual device, and Run. Choose **Settings → Apps → Default apps → Home app → Lucy** if running without the helper.
 
@@ -46,16 +48,16 @@ Release APK: `app/build/outputs/apk/release/app-release-unsigned.apk` unless rel
 ## What is implemented
 
 Lucy 0.3.3 cycles Sound → Vibrate → Silent from the Home-screen icon, with separate Sound, Vibrate, and Silent
-buttons in Device controls. These change call/notification ringer mode; alarm
+buttons in Phone controls. These change call/notification ringer mode; alarm
 and media volume remain unchanged. Android may require one-time Do Not Disturb
 policy access to change silent mode. During supervised setup, open
 Administration → Security & recovery → Allow Lucy sound-mode access and enable
 Lucy. Normal daily sound changes then work without opening Android Settings.
 
-- Text HOME, ordered installed-app list, app launch/return, brightness and ringtone-volume controls.
+- Text HOME, alphabetically ordered approved-app list, ungated Home visibility choices, app launch/return, brightness and ringtone-volume controls.
 - Guided administration, persistent app drafts, required/optional app guidance, direct Settings/accounts/Play/browser tools, sign-in checklist, and first-activation readiness gate.
 - Startup-safe administrator entry: loading/read failures cannot be mistaken for a request to create a new PIN; existing credentials and app choices survive updates.
-- Optional daily Chrome: select it in **Choose & set up apps**, review, and apply the draft. Removing approval hides it again in managed mode. Chrome's own DNS settings and web content are not fully controlled by Lucy; see the [setup and filtering limits](docs/onboarding.md#which-apps-belong-on-the-phone).
+- Optional daily Chrome: approve it in **Allow & set up apps**, review, and apply the draft. Removing approval blocks it again in managed mode; hiding it from **Phone controls → Choose Home screen apps** only removes its launcher button. Chrome's own DNS settings and web content are not fully controlled by Lucy; see the [setup and filtering limits](docs/onboarding.md#which-apps-belong-on-the-phone).
 - Device Owner provisioning components, package inventory, explicit system dependencies, persistent HOME, multi-app lock task, app/install/settings restrictions, read-back checks, and compensating rollback.
 - Enforced Cloudflare Families Private DNS and safe category probes, with explicit network failure status.
 - Salted PIN/recovery verifiers, persistent backoff, expiring admin sessions, protected UI, local policy log, and backup exclusion.

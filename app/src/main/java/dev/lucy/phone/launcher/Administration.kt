@@ -40,7 +40,9 @@ data class AdminActions(
 
 @Composable fun Administration(state: HomeState, page: String, busy: Boolean, message: String,
     forbidden: Set<String>, onPage: (String) -> Unit, onHome: () -> Unit, actions: AdminActions) {
-    val pages = linkedMapOf("connect" to "1 · Connect & accounts", "apps" to "2 · Choose & set up apps",
+    val pages = if (state.activated) linkedMapOf("apps" to "Allowed apps", "connect" to "System settings & accounts",
+        "filter" to "Filtering & safety", "review" to "Review changes")
+    else linkedMapOf("connect" to "1 · Connect & accounts", "apps" to "2 · Allow & set up apps",
         "filter" to "3 · Test filtering", "review" to "4 · Review & finish")
     val selected = state.draftApps.map { it.packageName }.toSet()
     val tools = (!state.activated || state.maintenance) && !busy
@@ -69,7 +71,7 @@ data class AdminActions(
                     fontSize = 29.sp, modifier = Modifier.padding(vertical = 16.dp))
                 if (page == "overview") {
                     Text(state.status, fontWeight = FontWeight.Medium)
-                    Text(if (state.activated) "Manage this phone without rebuilding Lucy. Changes to daily apps are saved as a draft until you apply them."
+                    Text(if (state.activated) "Administrator tools control which apps are allowed, system setup, filtering, and recovery. Home-screen visibility can be changed without the administrator PIN from Phone controls."
                         else "Set up the phone before restricting it. Connect, choose what belongs here, sign in, and test before enabling daily mode.",
                         modifier = Modifier.padding(vertical = 12.dp))
                     if (!state.owner) Text("Launcher preview only: no device-wide restrictions or enforced filtering. Device Owner enrollment must happen before adding accounts on a managed test device.")
@@ -104,8 +106,8 @@ data class AdminActions(
                             Button(onClick = { onPage("apps") }) { Text("Next: choose apps") }
                         }
                         "apps" -> {
-                            Text("${selected.size} apps in your daily-use draft. Phone essentials stay selected. Start small, then add only the tools this person needs.")
-                            Text("Installing, selecting, and signing in are separate steps. Apps not selected will be hidden in daily mode. Suggestions below are not security endorsements.", fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
+                            Text("${selected.size} apps in the administrator allowlist draft. Phone essentials stay allowed. Start small, then add only the tools this person needs.")
+                            Text("These checkboxes control which apps may run in daily mode; they do not control Home layout. Use Phone controls → Choose Home screen apps to show or hide approved apps. Installing, allowing, and signing in are separate steps.", fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
                             OutlinedButton(enabled = tools, onClick = { actions.play(null) }) { Text("Install or update in Google Play") }
                             OutlinedButton(enabled = !busy, onClick = actions.refresh) { Text("Refresh installed apps") }
                             OutlinedTextField(search, { search = it }, label = { Text("Search installed apps") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -117,7 +119,7 @@ data class AdminActions(
                                         modifier = Modifier.testTag("select:${entry.packageName}"))
                                     Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                                         Text(entry.label, fontWeight = FontWeight.Medium)
-                                        Text(if (entry.essential) "Required phone function" else if (entry.packageName in selected) "Selected for daily use" else "Not in daily use", fontSize = 12.sp)
+                                        Text(if (entry.essential) "Required phone function" else if (entry.packageName in selected) "Allowed in daily mode" else "Not allowed in daily mode", fontSize = 12.sp)
                                         Text(entry.packageName, fontSize = 10.sp)
                                         if (entry.packageName == PolicyRules.CHROME_PACKAGE) Text("Optional web access. DNS filtering does not screen every page; custom DNS can bypass it.", fontSize = 12.sp)
                                     }
@@ -137,7 +139,7 @@ data class AdminActions(
                             Text("Use Set up to sign into each selected app, choose the right account/workspace, allow its needed permissions, and test its normal tasks. Check links and embedded content: DNS cannot filter everything inside an app.")
                             ConfirmationRow("I checked the selected apps, accounts, and permissions", state.appsReviewed, !busy) { actions.acknowledge("appsReviewed", it) }
                             Heading("Setup-only tools")
-                            Text("Google Play, unrestricted Settings, and browsers other than Chrome are setup-only. Chrome is an optional daily app: select it above, review the draft, then apply. Removing it from the applied list hides it again in managed daily mode.", fontSize = 13.sp)
+                            Text("Google Play, unrestricted Settings, and browsers other than Chrome are setup-only. Chrome is an optional allowed app: approve it above, review the draft, then apply. Removing it from the allowlist blocks it again in managed daily mode.", fontSize = 13.sp)
                             Button(onClick = { onPage("filter") }) { Text("Next: test filtering") }
                         }
                         "filter" -> {
@@ -163,11 +165,11 @@ data class AdminActions(
                             Button(onClick = { onPage("review") }) { Text("Next: review & finish") }
                         }
                         "review" -> {
-                            Text("Daily apps", fontWeight = FontWeight.Medium)
+                            Text("Allowed apps", fontWeight = FontWeight.Medium)
                             Text(state.draftApps.joinToString(" · ") { it.label })
                             if (PolicyRules.CHROME_PACKAGE in selected) {
                                 Heading("Chrome is included")
-                                Text("Chrome will be available from Home in daily mode. Lucy keeps filtered Private DNS enabled, but does not lock Chrome's own DNS settings or screen all web content. Review Secure DNS and cross-check the test sites in Chrome before handoff.", fontSize = 13.sp)
+                                Text("Chrome will be allowed in daily mode and initially shown on Home. Lucy keeps filtered Private DNS enabled, but does not lock Chrome's own DNS settings or screen all web content. Review Secure DNS and cross-check the test sites in Chrome before handoff.", fontSize = 13.sp)
                             }
                             Heading("Handoff checklist")
                             ConfirmationRow("I checked the selected apps, accounts, and permissions", state.appsReviewed, !busy) { actions.acknowledge("appsReviewed", it) }
@@ -181,7 +183,7 @@ data class AdminActions(
                             TextButton(onClick = { onPage("security") }) { Text("Screen lock, timer & recovery") }
                             TextButton(onClick = { onPage("filter") }) { Text("Recheck filtering") }
                             Heading("What will change")
-                            Text("Lucy becomes the daily Home screen. Selected apps, including Chrome if chosen, remain available. Settings, stores, unapproved browsers, and installation routes close. Temporary internet ends. Administrator access stays available.")
+                            Text("Lucy becomes the daily Home screen. Allowed apps, including Chrome if approved, remain available and newly approved apps start on Home. Settings, stores, unapproved browsers, and installation routes close. Temporary internet ends. Administrator access stays available.")
                             Button(enabled = !busy && (!state.owner || (state.appsReviewed && (state.activated || state.blockers.isEmpty()))),
                                 onClick = { dialog = "apply" }, modifier = Modifier.testTag("applyDaily")) {
                                 Text(if (!state.owner) "Save launcher preview" else if (state.activated) "Apply draft & return to daily mode" else "Enable daily mode")
@@ -222,7 +224,7 @@ data class AdminActions(
         }
     }
     if (dialog.isNotEmpty()) {
-        val title = when (dialog) { "internet" -> "Use unfiltered setup internet?"; "maintenance" -> "Open supervised setup?"; "apply" -> "Apply these daily apps?"; "erase" -> "Erase this device?"; else -> "End this session?" }
+        val title = when (dialog) { "internet" -> "Use unfiltered setup internet?"; "maintenance" -> "Open supervised setup?"; "apply" -> "Apply this app allowlist?"; "erase" -> "Erase this device?"; else -> "End this session?" }
         val detail = when (dialog) {
             "internet" -> "Content filtering will be unavailable for up to 15 minutes, or until maintenance ends. Keep physical custody. Strict filtered DNS is restored on expiry, restart, or when you test/finish. If the provider remains unreachable, internet may stop again. This cannot make a daily-use filtering test pass."
             "maintenance" -> "For up to 30 minutes, you can install apps, sign in, and open Settings and browsers. Keep physical custody. Filtering stays enabled unless you separately confirm temporary internet."

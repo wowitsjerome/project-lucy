@@ -13,6 +13,7 @@ data class DevicePolicy(
     val activitySupport: Set<String>,
     val blocked: Set<String>,
     val dnsHost: String = DNS_HOST,
+    val homePackages: Set<String> = apps.map { it.packageName }.toSet(),
 ) {
     fun lockPackages(ownPackage: String) = (apps.map { it.packageName } + activitySupport + ownPackage).toSet()
     fun requiringActivitySupport(packages: Set<String>, purpose: String): DevicePolicy {
@@ -23,7 +24,8 @@ data class DevicePolicy(
     /** Removing an optional app during supervised maintenance is also a request to remove it from daily policy. */
     fun pruningMissingOptionalApps(installed: Set<String>): DevicePolicy {
         val remaining = apps.filter { it.essential || it.packageName in installed }
-        return if (remaining.isNotEmpty()) copy(apps = remaining) else this
+        return if (remaining.isNotEmpty()) copy(apps = remaining,
+            homePackages = homePackages.intersect(remaining.map { it.packageName }.toSet())) else this
     }
     fun toJson() = JSONObject().apply {
         put("schemaVersion", 1); put("revision", revision); put("deviceBaselineId", baseline)
@@ -32,18 +34,21 @@ data class DevicePolicy(
         } }))
         put("supportPackages", JSONObject(support)); put("activitySupport", JSONArray(activitySupport.toList()))
         put("blockedPackages", JSONArray(blocked.toList())); put("privateDnsHost", dnsHost)
+        put("homePackages", JSONArray(homePackages.sorted()))
     }
     companion object {
         const val DNS_HOST = "family.cloudflare-dns.com"
         fun fromJson(json: JSONObject): DevicePolicy {
             require(json.getInt("schemaVersion") == 1) { "Unsupported policy schema" }
-            val apps = json.getJSONArray("visibleApps")
+            val appsJson = json.getJSONArray("visibleApps")
+            val apps = (0 until appsJson.length()).map { i -> appsJson.getJSONObject(i).let {
+                AppEntry(it.getString("package"), it.getString("activity"), it.getString("label"), it.getBoolean("essential"))
+            } }
             val support = json.getJSONObject("supportPackages")
             return DevicePolicy(json.getLong("revision"), json.getString("deviceBaselineId"),
-                (0 until apps.length()).map { i -> apps.getJSONObject(i).let {
-                    AppEntry(it.getString("package"), it.getString("activity"), it.getString("label"), it.getBoolean("essential"))
-                } }, support.keys().asSequence().associateWith { support.getString(it) },
-                json.getJSONArray("activitySupport").strings(), json.getJSONArray("blockedPackages").strings(), json.getString("privateDnsHost"))
+                apps, support.keys().asSequence().associateWith { support.getString(it) },
+                json.getJSONArray("activitySupport").strings(), json.getJSONArray("blockedPackages").strings(), json.getString("privateDnsHost"),
+                json.optJSONArray("homePackages")?.strings() ?: apps.map { it.packageName }.toSet())
         }
     }
 }
@@ -64,6 +69,8 @@ object PolicyRules {
         if (!visible.containsAll(essential)) add("Required phone applications cannot be removed")
         if (policy.apps.isEmpty()) add("Select at least one application")
         if (policy.apps.any { it.label.isBlank() || it.activity.isBlank() }) add("Application metadata is incomplete")
+        if (!visible.containsAll(policy.homePackages)) add("Home contains an app that is not allowed")
+        if (!policy.homePackages.containsAll(policy.apps.filter { it.essential }.map { it.packageName })) add("Required phone applications must remain on Home")
         if (policy.lockPackages(own).intersect(forbidden).isNotEmpty()) add("Other browsers, stores, and unrestricted Settings cannot be approved")
         if (policy.blocked.intersect(policy.lockPackages(own) + policy.support.keys).isNotEmpty()) add("A required package is also blocked")
         if (policy.dnsHost != DevicePolicy.DNS_HOST) add("V1 requires the Families resolver")

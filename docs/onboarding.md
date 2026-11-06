@@ -12,12 +12,18 @@ Create a separate administrator PIN, save the one-time recovery code offline, an
 
 On startup, **Loading administration…** stays disabled until Lucy reads the saved setup. An existing administrator is sent to the existing-PIN screen, never new-PIN setup. A read failure or a managed device with missing credentials shows **Administrator access unavailable** with a retry option; it does not reset credentials. New-PIN setup is offered only after confirming there is no administrator and no active managed policy.
 
-## The four administration pages
+## Everyday Home choices versus administration
+
+**Phone controls** does not require the administrator PIN. It brings everyday sound, display, Wi-Fi, and Home-screen choices together. **Choose Home screen apps** lets the user show or hide apps that are already approved, while required phone functions remain visible. Hiding an app removes its Lucy Home button; it does not uninstall the app, erase its data, or revoke its approved access.
+
+**Administration** remains PIN-protected. It controls the security allowlist, installation and updates, accounts and Android settings, filtering, maintenance, diagnostics, and recovery. Newly approved apps start visible on Home. Removing approval also removes the app from Home and daily lock-task access. Existing Home visibility choices are preserved when other allowlist changes are applied.
+
+## The four onboarding pages
 
 | Page | What to do | Completion evidence |
 | --- | --- | --- |
 | **1 · Connect & accounts** | Connect Wi-Fi/cellular. Open Accounts & sync, Settings, or Chrome directly. Sign into Google before using Play. | Normal internet works; the correct accounts are present. |
-| **2 · Choose & set up apps** | Keep phone essentials. Install needed apps in Play, refresh the list, select daily apps, and use each app's **Set up** button to sign in and grant permissions. | Confirm the selected apps, accounts, and permissions checklist. |
+| **2 · Allow & set up apps** | Keep phone essentials. Install needed apps in Play, refresh the list, approve daily apps, and use each app's **Set up** button to sign in and grant permissions. | Confirm the allowed apps, accounts, and permissions checklist. |
 | **3 · Test filtering** | Run Lucy's built-in checks. Optionally cross-check the harmless test links in a supervised browser. | Normal DNS + HTTPS access and both category blocks pass on the current network. |
 | **4 · Review & finish** | Review the exact daily list, saved recovery code, and visible Home/Back navigation. Enable daily mode only when prerequisites pass. | Device policy is read back, filters pass, and core phone tasks work. |
 
@@ -32,12 +38,12 @@ Add an optional app only for a named need. The UI offers Chrome, Calendar, Authe
 For each candidate:
 
 1. Install it from Play during setup/maintenance.
-2. Select it in the daily-use draft; installation alone does not approve it.
+2. Approve it in the administrator allowlist draft; installation alone does not approve it.
 3. Open **Set up**, sign into the intended account/workspace, and allow only necessary permissions.
 4. Test normal tasks, notifications, links, file/photo pickers, and returning Home. Content inside an app is not screened by domain filtering; exclude apps that undermine the intended boundaries.
 5. Confirm the checklist and apply the draft. Retest the app in daily mode: access during setup alone does not establish compatibility with lockdown. Reauthentication later uses the same supervised session flow.
 
-**To add Chrome:** open **Choose & set up apps**, search for Chrome, and select its checkbox. If missing, use **Find in Play**, install it during supervised setup, then refresh. Complete the app checklist and use **Review & finish → Apply draft & return to daily mode** (or **Save launcher preview** in preview mode). Chrome then appears on Home. Deselecting it and applying the draft hides it again in managed daily mode; it does not uninstall Chrome or erase its sign-ins.
+**To add Chrome:** open **Allow & set up apps**, search for Chrome, and select its checkbox. If missing, use **Find in Play**, install it during supervised setup, then refresh. Complete the app checklist and use **Review & finish → Apply draft & return to daily mode** (or **Save launcher preview** in preview mode). Chrome is approved and initially appears on Home. **Phone controls → Choose Home screen apps** may hide its button without revoking approval; deselecting it in Administration and applying the draft revokes daily access without uninstalling Chrome or erasing its sign-ins.
 
 Chrome is the only selectable general-purpose browser in this version (`com.android.chrome`; Beta/Dev/Canary are not included). Other browsers, stores, and unrestricted Android Settings remain **setup tools**, with dedicated buttons instead of daily-app checkboxes. Chrome's own settings remain accessible when Chrome is approved. Infrastructure such as Play services, keyboards, WebView, and permission providers remains separate from visible apps.
 
@@ -74,7 +80,7 @@ For an optional browser cross-check, use the three named link buttons during sup
 
 Open **Administration → Open supervised setup**, authenticate, and confirm physical custody. A 30-minute session exposes Settings, Play, and browser tools. Filtered DNS stays active unless you separately confirm temporary internet. The two-minute administrator UI session and the longer maintenance lease are separate: leaving for sign-in locks the former, not the latter.
 
-Install/update/sign in → refresh/select apps → confirm their setup → test filtering → **Apply draft & return to daily mode**. Applying a draft can end maintenance directly; there is no need to hide an app again before it can be approved.
+Install/update/sign in → refresh/approve apps → confirm their setup → test filtering → **Apply draft & return to daily mode**. Applying a draft can end maintenance directly; there is no need to hide an app again before it can be approved.
 
 **End session without applying draft** immediately restores the existing daily list and strict DNS. Draft choices remain saved. This safety action remains available even if filtering cannot pass. In that case the device stays **Attention required** and should not be handed over. Expiry and reboot restore restrictions too.
 
@@ -86,4 +92,4 @@ If Chrome is visible but its checkbox is disabled on the old 0.1.0 administratio
 
 Use three-button navigation on the current Android 16 emulator. Its gesture route invokes Pixel Launcher, which is intentionally not a daily allowed app. Lucy paints a dark navigation-bar background with light buttons. Test an actual visible Home-button tap from another app; a keyboard Home event alone is insufficient evidence.
 
-Before handing over, verify calls/messages, contacts, camera/photos, maps, alarms, notifications, required app sign-ins, unapproved-browser/Settings closure, and filtering. If Chrome is selected, verify opening it from Home, returning Home, the harmless browser cross-check, and hiding it again after removing approval. Physical telephony, emergency access, OEM behavior, QR enrollment, real account upgrades, and a three-day trial are still mandatory release gates. See [acceptance.md](acceptance.md).
+Before handing over, verify calls/messages, contacts, camera/photos, maps, alarms, notifications, required app sign-ins, unapproved-browser/Settings closure, and filtering. If Chrome is approved, verify opening it from Home, returning Home, the harmless browser cross-check, hiding/showing it from **Phone controls**, and revoking its approval in Administration. Physical telephony, emergency access, OEM behavior, QR enrollment, real account upgrades, and a three-day trial are still mandatory release gates. See [acceptance.md](acceptance.md).

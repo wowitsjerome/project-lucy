@@ -33,7 +33,7 @@ class SoundControlsTest {
             val icon = compose.onNodeWithTag("quickSoundMode").fetchSemanticsNode().boundsInRoot
             val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
             assertTrue("Sound icon must be at the top right", icon.center.x > root.width * 0.8f && icon.top < root.height * 0.15f)
-            compose.onNodeWithText("Device controls").performClick()
+            compose.onNodeWithText("Phone controls").performClick()
             for ((label, mode) in listOf("Silent" to AudioManager.RINGER_MODE_SILENT,
                 "Vibrate" to AudioManager.RINGER_MODE_VIBRATE, "Sound" to AudioManager.RINGER_MODE_NORMAL)) {
                 if (audio.ringerMode != mode) compose.onNodeWithTag("sound:$label").performClick()

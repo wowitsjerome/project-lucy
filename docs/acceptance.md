@@ -8,10 +8,23 @@ Status: onboarding/administration revision implemented for local development; ve
 - Build: Gradle 8.13, AGP 8.13.2, Kotlin 2.1.20, compile/target SDK 35, minimum API 30.
 - Emulators: isolated `Lucy_Launcher` (5580) and `Lucy_Managed` (5582).
 - System image: Google Play ARM64 Android 16/API 36, build `BE2A.250530.026.D1`.
-- App: `dev.lucy.phone`, version 0.2.2; debug/test-only policy deliberately retains ADB. Earlier-version evidence below is historical unless explicitly rerun.
-- Physical Pixel/Samsung/carrier baseline: unavailable, not tested.
+- App: `dev.lucy.phone`, version 0.3.9; debug/test-only policy deliberately retains ADB. Earlier-version evidence below is historical unless explicitly rerun.
+- Physical baseline used for the latest focused checks: Samsung SM-S918U, Android 14. Broader carrier/device certification remains outstanding.
 
 ## Evidence and scope
+
+### Consolidated Phone controls · 0.3.9 · 2026-11-06
+
+- Renamed the ungated everyday destination from **Device controls** to **Phone controls** and moved Home visibility under **Choose Home screen apps**. The Home footer now contains only **Phone controls** and PIN-protected **Administration**.
+- `bash scripts/check.sh` passed after updating launcher, sound, and Wi-Fi instrumentation coverage for the new navigation structure.
+- Updated the managed Samsung SM-S918U from 0.3.8 (versionCode 13) to 0.3.9 (versionCode 14). Live UI read-back confirmed **Phone controls** contains sound, launcher brightness, **Choose Home screen apps**, and Wi-Fi; the nested page returns to Phone controls. Policy revision 15 retained all 32 allowed and Home apps, reported no errors, ended maintenance, and restored lock task.
+
+### Home visibility and administrator boundary · 0.3.8 · 2026-11-06
+
+- `bash scripts/check.sh` passed: debug, instrumentation, and release compilation; unit tests; Android lint; and helper/static checks. Model tests cover legacy migration, Home/allowlist separation, essential-app visibility, invalid Home entries, and pruning an uninstalled optional app from both lists. Launcher instrumentation coverage was extended to enter **Edit Home** without authentication before confirming **Administration** remains PIN-protected; that instrumentation compiled but was not executed on this managed phone.
+- Updated the managed Samsung SM-S918U from 0.3.7 (versionCode 12) to 0.3.8 (versionCode 13) during supervised maintenance. Update recovery restored daily restrictions and applied policy revision 15 with no policy errors.
+- The legacy revision-14 policy had 32 allowed/visible apps and no `homePackages` field. On-device read-back after migration showed 32 allowed apps, 32 Home apps, identical package sets, and `lastVerifiedRevision` 15, so the upgrade hid nothing.
+- Live UI inspection showed the Home list alphabetized, the three footer destinations fitting on the Samsung display, **Edit Home apps** opening without the administrator PIN, optional-app checkboxes enabled, and required-phone-function checkboxes selected and disabled. No claim is made here for a full physical hide/restore interaction; its allowlist separation and validation constraints are covered by unit tests, while the interaction itself remains a focused manual regression check before handoff.
 
 ### OEM in-call interface support · 0.3.7 · 2026-11-06
 

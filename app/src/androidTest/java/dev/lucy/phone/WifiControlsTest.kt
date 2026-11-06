@@ -28,8 +28,8 @@ class WifiControlsTest {
         val enabled = wifi.isWifiEnabled
         app.startActivity(Intent(app, HomeActivity::class.java).setAction(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        compose.waitUntil(20_000) { runCatching { compose.onAllNodesWithText("Device controls").fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false) }
-        compose.onNodeWithText("Device controls").performClick()
+        compose.waitUntil(20_000) { runCatching { compose.onAllNodesWithText("Phone controls").fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false) }
+        compose.onNodeWithText("Phone controls").performClick()
         compose.onNodeWithTag("wifiControls").performScrollTo().performClick()
         compose.onNodeWithTag("wifiStatus").assertExists()
         try {

@@ -15,10 +15,23 @@ class PolicyRulesTest {
     @Test fun doesNotAllowDnsDisable() { assertTrue(validate(policy.copy(dnsHost = "unfiltered.test")).isNotEmpty()) }
     @Test fun rejectsDuplicates() { assertTrue(validate(policy.copy(apps = policy.apps + policy.apps)).isNotEmpty()) }
     @Test fun jsonRoundTripPreservesPolicy() { assertEquals(policy, DevicePolicy.fromJson(policy.toJson())) }
+    @Test fun legacyPolicyShowsEveryAllowedAppOnHome() {
+        val legacy = policy.toJson().apply { remove("homePackages") }
+        assertEquals(policy.apps.map { it.packageName }.toSet(), DevicePolicy.fromJson(legacy).homePackages)
+    }
     @Test fun futureSchemaIsRejected() {
         assertThrows(IllegalArgumentException::class.java) { DevicePolicy.fromJson(policy.toJson().put("schemaVersion", 2)) }
     }
     @Test fun supportDoesNotAutomaticallyGainActivityAccess() { assertFalse("provider" in policy.lockPackages("lucy")) }
+    @Test fun homeVisibilityDoesNotChangeSecurityAllowlist() {
+        val optional = AppEntry("calendar", "Calendar", "Calendar")
+        val allowed = policy.copy(apps = policy.apps + optional)
+        val hidden = allowed.copy(homePackages = setOf("phone"))
+        assertEquals(allowed.lockPackages("lucy"), hidden.lockPackages("lucy"))
+        assertTrue(validate(hidden).isEmpty())
+        assertTrue(validate(hidden.copy(homePackages = setOf("calendar"))).isNotEmpty())
+        assertTrue(validate(hidden.copy(homePackages = setOf("phone", "browser"))).isNotEmpty())
+    }
     @Test fun requiredSystemActivitySupportIsAllowedAndUnblocked() {
         val upgraded = policy.copy(blocked = policy.blocked + "incall").requiringActivitySupport(setOf("incall"), "System in-call interface")
         assertEquals("System in-call interface", upgraded.support["incall"])
@@ -29,8 +42,9 @@ class PolicyRulesTest {
     }
     @Test fun missingOptionalAppsArePrunedButEssentialAppsRemain() {
         val optional = AppEntry("calendar", "Calendar", "Calendar")
-        val withOptional = policy.copy(apps = policy.apps + optional)
+        val withOptional = policy.copy(apps = policy.apps + optional, homePackages = setOf("phone", "calendar"))
         assertEquals(policy.apps, withOptional.pruningMissingOptionalApps(setOf("phone")).apps)
+        assertEquals(setOf("phone"), withOptional.pruningMissingOptionalApps(setOf("phone")).homePackages)
         assertEquals(policy.apps, withOptional.pruningMissingOptionalApps(emptySet()).apps)
         assertEquals(listOf(optional), policy.copy(apps = listOf(optional)).pruningMissingOptionalApps(emptySet()).apps)
     }

@@ -32,9 +32,13 @@ class LauncherTest {
     @Test fun homeAndControlsAreUsable() {
         compose.waitUntil(20_000) { compose.onAllNodesWithTag("status").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("L U C Y").assertIsDisplayed()
-        compose.onNodeWithText("Device controls").performClick()
+        compose.onNodeWithText("Phone controls").performClick()
         compose.onNodeWithText("Launcher brightness").assertIsDisplayed()
         compose.onNodeWithText("Volume +").assertIsDisplayed()
+        compose.onNodeWithText("Choose Home screen apps").performClick()
+        compose.onNodeWithText("Home screen apps").assertIsDisplayed()
+        compose.onNodeWithText("Choose which administrator-approved apps appear on Lucy Home. Hiding an app does not uninstall it or revoke its approved access.").assertIsDisplayed()
+        compose.onNodeWithText("← Phone controls").performClick()
         compose.onNodeWithText("← Home").performClick()
         compose.onNodeWithText("Administration").performClick()
         compose.onNodeWithTag("pin").assertIsDisplayed()

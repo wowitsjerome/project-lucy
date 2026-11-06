@@ -51,7 +51,8 @@ import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 
 data class HomeState(
-    val apps: List<AppEntry> = emptyList(), val catalog: List<AppEntry> = emptyList(), val owner: Boolean = false,
+    val apps: List<AppEntry> = emptyList(), val allowedApps: List<AppEntry> = emptyList(),
+    val catalog: List<AppEntry> = emptyList(), val owner: Boolean = false,
     val activated: Boolean = false, val adminConfigured: Boolean? = null, val maintenance: Boolean = false,
     val status: String = "Loading", val baseline: String = "", val errors: List<String> = emptyList(),
     val filterDetail: String = "Not configured", val support: Map<String, String> = emptyMap(), val log: List<String> = emptyList(),
@@ -186,15 +187,19 @@ class HomeActivity : ComponentActivity() {
                 val checklist = app.store.onboarding()
                 val draftApps = app.engine.draftPolicy().apps
                 val checks = filter?.optJSONArray("checks")
-                HomeState(policy.apps, app.engine.inventory.apps(policy), app.engine.isOwner, activated, app.auth.configured(),
-                    maintenance, status, policy.baseline, errors,
-                    filter?.let { it.optString("detail") + if (!fresh && it.optBoolean("passed")) " · recheck required on the current network" else "" } ?: "Not checked", policy.support,
-                    events?.let { (maxOf(0, it.length() - 10) until it.length()).map { i -> it.getJSONObject(i).getString("event") }.reversed() } ?: emptyList(),
-                    draftApps, app.engine.onboardingBlockers(), app.engine.networkDescription(), fresh,
-                    checks?.let { (0 until it.length()).map { i -> it.getJSONObject(i).let { c -> ProbeResult(c.getString("label"), c.getBoolean("passed"), c.getString("detail")) } } } ?: emptyList(),
-                    app.engine.temporaryInternetActive(), app.engine.remainingMinutes(true), app.engine.remainingMinutes(),
-                    checklist.optJSONArray("reviewedApps")?.let { (0 until it.length()).map(it::getString).toSet() } == draftApps.map { it.packageName }.toSet(),
-                    checklist.optBoolean("recoverySaved"), checklist.optBoolean("navigationTested"))
+                val labelOrder = compareBy<AppEntry> { it.label.lowercase() }.thenBy { it.packageName }
+                val allowedApps = policy.apps.sortedWith(labelOrder)
+                HomeState(
+                    apps = allowedApps.filter { it.packageName in policy.homePackages }, allowedApps = allowedApps,
+                    catalog = app.engine.inventory.apps(policy), owner = app.engine.isOwner, activated = activated,
+                    adminConfigured = app.auth.configured(), maintenance = maintenance, status = status, baseline = policy.baseline,
+                    errors = errors, filterDetail = filter?.let { it.optString("detail") + if (!fresh && it.optBoolean("passed")) " · recheck required on the current network" else "" } ?: "Not checked",
+                    support = policy.support, log = events?.let { (maxOf(0, it.length() - 10) until it.length()).map { i -> it.getJSONObject(i).getString("event") }.reversed() } ?: emptyList(),
+                    draftApps = draftApps, blockers = app.engine.onboardingBlockers(), network = app.engine.networkDescription(), filterPassed = fresh,
+                    filterChecks = checks?.let { (0 until it.length()).map { i -> it.getJSONObject(i).let { c -> ProbeResult(c.getString("label"), c.getBoolean("passed"), c.getString("detail")) } } } ?: emptyList(),
+                    temporaryInternet = app.engine.temporaryInternetActive(), internetMinutes = app.engine.remainingMinutes(true), maintenanceMinutes = app.engine.remainingMinutes(),
+                    appsReviewed = checklist.optJSONArray("reviewedApps")?.let { (0 until it.length()).map(it::getString).toSet() } == draftApps.map { it.packageName }.toSet(),
+                    recoverySaved = checklist.optBoolean("recoverySaved"), navigationTested = checklist.optBoolean("navigationTested"))
             }.onSuccess { value -> runOnUiThread {
                 state = value
                 // A stale setup page must not survive a completed credentials read. Keep a newly
@@ -266,6 +271,7 @@ class HomeActivity : ComponentActivity() {
             "home" -> Home()
             "controls" -> Controls()
             "wifi" -> Page("Wi-Fi") { WifiControls() }
+            "homeApps" -> HomeApps()
             "login", "setup", "recover" -> Credentials()
             "adminUnavailable" -> AdministratorUnavailable()
             "admin" -> Admin()
@@ -327,7 +333,7 @@ class HomeActivity : ComponentActivity() {
             Spacer(Modifier.height(12.dp))
             HorizontalDivider(color = Color(0xFFD6D9D0))
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { navigate("controls") }) { Text("Device controls") }
+                TextButton(onClick = { navigate("controls") }) { Text("Phone controls") }
                 TextButton(enabled = !busy && state.administratorEntry != AdministratorEntry.LOADING,
                     onClick = ::openAdministration, modifier = Modifier.testTag("administrationEntry")) {
                     Text(if (state.administratorEntry == AdministratorEntry.LOADING) "Loading administration…" else "Administration")
@@ -337,9 +343,33 @@ class HomeActivity : ComponentActivity() {
             Notice()
         }
     }
-    @Composable private fun Page(title: String, content: @Composable ColumnScope.() -> Unit) {
+    @Composable private fun HomeApps() {
+        val selected = state.apps.map { it.packageName }.toSet()
+        Page("Home screen apps", "controls") {
+            Text("Choose which administrator-approved apps appear on Lucy Home. Hiding an app does not uninstall it or revoke its approved access.")
+            Spacer(Modifier.height(12.dp))
+            state.allowedApps.forEach { entry ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = entry.packageName in selected, enabled = !busy && !entry.essential,
+                        onCheckedChange = { checked ->
+                            val next = if (checked) selected + entry.packageName else selected - entry.packageName
+                            work { app.engine.saveHomeSelection(next); "Home apps updated" }
+                        }, modifier = Modifier.testTag("homeApp:${entry.packageName}"))
+                    Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                        Text(entry.label, fontWeight = FontWeight.Medium)
+                        Text(if (entry.essential) "Required phone function" else if (entry.packageName in selected) "Shown on Home" else "Hidden from Home", fontSize = 12.sp)
+                    }
+                }
+            }
+            if (state.allowedApps.none { !it.essential }) Text("Your administrator has not approved any optional apps yet.", modifier = Modifier.padding(top = 12.dp))
+            Text("Need another app? Ask your administrator to add it from Administrator tools.", fontSize = 13.sp, modifier = Modifier.padding(top = 18.dp))
+        }
+    }
+    @Composable private fun Page(title: String, backScreen: String = "home", content: @Composable ColumnScope.() -> Unit) {
         Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp)) {
-            TextButton(onClick = { app.auth.lock(); session = null; recoveryCode = ""; navigate("home") }) { Text("← Home") }
+            TextButton(onClick = { app.auth.lock(); session = null; recoveryCode = ""; navigate(backScreen) }) {
+                Text(if (backScreen == "home") "← Home" else "← Phone controls")
+            }
             Text(title, fontSize = 32.sp, fontWeight = FontWeight.Light, modifier = Modifier.padding(vertical = 18.dp))
             Notice()
             content()
@@ -365,7 +395,7 @@ class HomeActivity : ComponentActivity() {
                 Text(recoveryCode, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 24.dp).testTag("recoveryCode"))
                 Button(onClick = { recoveryCode = ""; navigate("login") }) { Text("I have saved the code") }
             } else {
-                Text(if (screen == "login") "Enter the administrator PIN to change apps or manage this device." else "Use a separate PIN with at least eight digits. The daily screen-lock PIN is different.")
+                Text(if (screen == "login") "Enter the administrator PIN to allow apps, open setup tools, or change device policy." else "Use a separate PIN with at least eight digits. The daily screen-lock PIN is different.")
                 Spacer(Modifier.height(20.dp))
                 if (screen == "recover") OutlinedTextField(code, { code = it }, label = { Text("Recovery code") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(pin, { pin = it.take(64) }, label = { Text(if (screen == "login") "Administrator PIN" else "New administrator PIN") },
@@ -454,7 +484,7 @@ class HomeActivity : ComponentActivity() {
     @Composable private fun Controls() {
         val audio = remember { getSystemService(AudioManager::class.java) }
         var brightness by remember { mutableFloatStateOf(window.attributes.screenBrightness.takeIf { it >= 0 } ?: 0.5f) }
-        Page("Device controls") {
+        Page("Phone controls") {
             LaunchedEffect(Unit) { while (true) { refreshRingerMode(); delay(1_000) } }
             Text("Sound mode: ${ringerLabel()}", modifier = Modifier.testTag("soundMode"))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -471,6 +501,9 @@ class HomeActivity : ComponentActivity() {
             Text("Launcher brightness")
             Slider(value = brightness, onValueChange = { value -> brightness = value; window.attributes = window.attributes.apply { screenBrightness = value.coerceAtLeast(0.05f) } })
             Text("Brightness applies to the launcher. System brightness is available in supervised maintenance.", fontSize = 12.sp)
+            Text("Home screen", fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
+            OutlinedButton(onClick = { navigate("homeApps") }, modifier = Modifier.testTag("homeAppControls")) { Text("Choose Home screen apps") }
+            Text("Show or hide apps your administrator has already approved.", fontSize = 12.sp)
             OutlinedButton(onClick = { navigate("wifi") }, modifier = Modifier.testTag("wifiControls")) { Text("Wi-Fi") }
             Row(Modifier.padding(vertical = 20.dp)) {
                 OutlinedButton(onClick = { runCatching { audio.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI) }.onFailure { message = "Change Do Not Disturb settings during maintenance" } }) { Text("Volume −") }

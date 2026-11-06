@@ -55,6 +55,7 @@ data class HomeState(
     val apps: List<AppEntry> = emptyList(), val allowedApps: List<AppEntry> = emptyList(),
     val catalog: List<AppEntry> = emptyList(), val owner: Boolean = false,
     val activated: Boolean = false, val adminConfigured: Boolean? = null, val maintenance: Boolean = false,
+    val totpConfigured: Boolean = false,
     val status: String = "Loading", val baseline: String = "", val errors: List<String> = emptyList(),
     val filterDetail: String = "Not configured", val support: Map<String, String> = emptyMap(), val log: List<String> = emptyList(),
     val draftApps: List<AppEntry> = emptyList(), val blockers: List<String> = emptyList(),
@@ -74,6 +75,8 @@ class HomeActivity : ComponentActivity() {
     private var screen by mutableStateOf("home")
     private var session: String? = null
     private var recoveryCode by mutableStateOf("")
+    private var totpEnrollmentUri by mutableStateOf("")
+    private var totpSetupKey by mutableStateOf("")
     private var resumed = false
     private var adminPage by mutableStateOf("overview")
     private val adminSessionBoundary = AdminSessionBoundary()
@@ -151,7 +154,7 @@ class HomeActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume(); resumed = true
         if (screen == "admin" && !app.auth.validSession(session)) {
-            lockAdministration(); navigate("login"); message = "Administrator session expired; enter your PIN again"
+            lockAdministration(); navigate("login"); message = "Administrator session expired; authenticate again"
         }
         refreshRingerMode(); ensureLockTask(); refresh()
     }
@@ -162,10 +165,11 @@ class HomeActivity : ComponentActivity() {
     override fun onPause() {
         resumed = false
         if (screen == "admin") {
+            cancelTotpEnrollment()
             app.adminReturnPage = adminPage
             if (!adminSessionBoundary.shouldPreserveAdminOnPause(pausingAdministration = true)) {
                 // Hide management UI on an unrelated app switch, but keep the short-lived token
-                // so explicitly re-entering Administration does not demand the PIN again.
+                // so explicitly re-entering Administration does not demand authentication again.
                 screen = "home"
                 app.adminReturnPage = null
             }
@@ -180,6 +184,7 @@ class HomeActivity : ComponentActivity() {
     }
     private fun navigate(target: String) {
         screen = target; message = ""
+        if (target != "admin") cancelTotpEnrollment()
         if (target == "home") app.adminReturnPage = null
         if (target in setOf("setup", "login", "recover", "admin", "adminUnavailable", "wifi")) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -187,7 +192,14 @@ class HomeActivity : ComponentActivity() {
     private fun lockAdministration() {
         app.clearAdminActivityHandoff()
         app.auth.lock()
+        totpEnrollmentUri = ""
+        totpSetupKey = ""
         session = null
+    }
+    private fun cancelTotpEnrollment() {
+        totpEnrollmentUri = ""
+        totpSetupKey = ""
+        app.auth.cancelTotpEnrollment()
     }
     private fun expectAdminToolPause() {
         adminSessionBoundary.expectExternalPause()
@@ -244,7 +256,8 @@ class HomeActivity : ComponentActivity() {
                 HomeState(
                     apps = allowedApps.filter { it.packageName in policy.homePackages }, allowedApps = allowedApps,
                     catalog = app.engine.inventory.apps(policy), owner = app.engine.isOwner, activated = activated,
-                    adminConfigured = app.auth.configured(), maintenance = maintenance, status = status, baseline = policy.baseline,
+                    adminConfigured = app.auth.configured(), maintenance = maintenance, totpConfigured = app.auth.totpConfigured(),
+                    status = status, baseline = policy.baseline,
                     errors = errors, filterDetail = filter?.let { it.optString("detail") + if (!fresh && it.optBoolean("passed")) " · recheck required on the current network" else "" } ?: "Not checked",
                     support = policy.support, log = events?.let { (maxOf(0, it.length() - 10) until it.length()).map { i -> it.getJSONObject(i).getString("event") }.reversed() } ?: emptyList(),
                     draftApps = draftApps, blockers = app.engine.onboardingBlockers(), network = app.engine.networkDescription(), filterPassed = fresh,
@@ -292,6 +305,18 @@ class HomeActivity : ComponentActivity() {
             }
         }
     }
+    private fun <T> workValue(success: (T) -> Unit, block: () -> T) {
+        if (busy) return
+        busy = true; message = ""
+        app.executor.execute {
+            val result = runCatching(block)
+            runOnUiThread {
+                busy = false
+                result.onSuccess(success).onFailure { message = it.message ?: "Operation failed" }
+                refresh()
+            }
+        }
+    }
     private fun openApp(entry: AppEntry) {
         runCatching {
             val intent = app.engine.inventory.launchIntent(entry)
@@ -316,7 +341,10 @@ class HomeActivity : ComponentActivity() {
 
     @Composable private fun Content() {
         BackHandler {
-            if (screen == "admin" && adminPage != "overview") adminPage = "overview"
+            if (screen == "admin" && adminPage != "overview") {
+                if (adminPage == "security") cancelTotpEnrollment()
+                adminPage = "overview"
+            }
             else { recoveryCode = ""; navigate("home") }
         }
         when (screen) {
@@ -441,16 +469,26 @@ class HomeActivity : ComponentActivity() {
         var pin by remember(screen) { mutableStateOf("") }
         var confirm by remember(screen) { mutableStateOf("") }
         var code by remember(screen) { mutableStateOf("") }
+        var useBackupPin by remember(screen, state.totpConfigured) { mutableStateOf(false) }
         Page(when (screen) { "setup" -> "Set up administration"; "recover" -> "Recover access"; else -> "Administrator access" }) {
             if (recoveryCode.isNotBlank()) {
                 Text("Store this recovery code offline. It will only be shown once and can reset the administrator PIN.")
                 Text(recoveryCode, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 24.dp).testTag("recoveryCode"))
                 Button(onClick = { recoveryCode = ""; navigate("login") }) { Text("I have saved the code") }
             } else {
-                Text(if (screen == "login") "Enter the administrator PIN to allow apps, open setup tools, or change device policy." else "Use a separate PIN with at least eight digits. The daily screen-lock PIN is different.")
+                val authenticatorLogin = screen == "login" && state.totpConfigured && !useBackupPin
+                Text(when {
+                    authenticatorLogin -> "Enter the current six-digit code from the enrolled authenticator. The backup PIN is available only through the explicit option below."
+                    screen == "login" -> "Enter the backup administrator PIN to allow apps, open setup tools, or change device policy."
+                    else -> "Use a separate PIN with at least eight digits. The daily screen-lock PIN is different."
+                })
                 Spacer(Modifier.height(20.dp))
                 if (screen == "recover") OutlinedTextField(code, { code = it }, label = { Text("Recovery code") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(pin, { pin = it.take(64) }, label = { Text(if (screen == "login") "Administrator PIN" else "New administrator PIN") },
+                if (authenticatorLogin) OutlinedTextField(code, { code = it.filter { digit -> digit in '0'..'9' }.take(6) },
+                    label = { Text("Authenticator code") }, visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("totp"))
+                else OutlinedTextField(pin, { pin = it.take(64) }, label = { Text(if (screen == "login") "Backup administrator PIN" else "New administrator PIN") },
                     visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     singleLine = true, modifier = Modifier.fillMaxWidth().testTag("pin"))
                 if (screen != "login") OutlinedTextField(confirm, { confirm = it.take(64) }, label = { Text("Confirm PIN") },
@@ -462,10 +500,17 @@ class HomeActivity : ComponentActivity() {
                     else {
                         pin = ""; confirm = ""; code = ""
                         work(success = { value -> if (mode == "login") { session = value; navigate("admin") } else recoveryCode = value }) {
-                            when (mode) { "setup" -> app.auth.setup(enteredPin); "recover" -> app.auth.recover(enteredCode, enteredPin); else -> app.auth.unlock(enteredPin) }
+                            when (mode) {
+                                "setup" -> app.auth.setup(enteredPin)
+                                "recover" -> app.auth.recover(enteredCode, enteredPin)
+                                else -> if (authenticatorLogin) app.auth.unlockTotp(enteredCode) else app.auth.unlock(enteredPin)
+                            }
                         }
                     }
                 }) { Text(if (screen == "login") "Unlock" else "Save PIN") }
+                if (screen == "login" && state.totpConfigured) TextButton(enabled = !busy, onClick = {
+                    pin = ""; code = ""; useBackupPin = !useBackupPin
+                }) { Text(if (useBackupPin) "Use authenticator code" else "Use backup PIN") }
                 if (screen == "login") TextButton(enabled = !busy, onClick = { navigate("recover") }) { Text("Use recovery code") }
             }
         }
@@ -488,7 +533,9 @@ class HomeActivity : ComponentActivity() {
         Administration(
             state = state, page = adminPage, busy = busy, message = message,
             forbidden = remember(state.catalog) { app.engine.inventory.forbidden() },
-            onPage = { adminPage = it; message = "" },
+            totpEnrollmentUri = totpEnrollmentUri,
+            totpSetupKey = totpSetupKey,
+            onPage = { if (adminPage == "security" && it != "security") cancelTotpEnrollment(); adminPage = it; message = "" },
             onHome = { navigate("home") },
             onLock = { lockAdministration(); navigate("home") },
             actions = AdminActions(
@@ -533,6 +580,17 @@ class HomeActivity : ComponentActivity() {
                 rotatePin = { pin -> work(success = { recoveryCode = it; session = null; navigate("login") }) {
                     app.auth.changePin(session ?: "", pin)
                 } },
+                beginTotp = { workValue(success = { enrollment ->
+                    totpEnrollmentUri = enrollment.uri
+                    totpSetupKey = enrollment.setupKey
+                    message = "Scan the QR code and verify a current code"
+                }) { app.auth.beginTotpEnrollment(session ?: "") } },
+                confirmTotp = { code -> work(success = {
+                    totpEnrollmentUri = ""
+                    totpSetupKey = ""
+                    message = it
+                }) { app.auth.confirmTotpEnrollment(session ?: "", code); "Authenticator enabled" } },
+                disableTotp = { work { app.auth.disableTotp(session ?: ""); totpEnrollmentUri = ""; totpSetupKey = ""; "Authenticator disabled; use the backup PIN" } },
                 erase = { phrase -> work { app.engine.decommission(session ?: "", phrase); "Reset requested" } },
                 refresh = ::refresh,
             ),

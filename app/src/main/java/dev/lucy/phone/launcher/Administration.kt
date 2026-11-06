@@ -1,7 +1,9 @@
 package dev.lucy.phone.launcher
 
+import android.graphics.Bitmap
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -10,8 +12,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -19,13 +23,17 @@ import androidx.compose.ui.unit.sp
 import dev.lucy.phone.configuration.AppEntry
 import dev.lucy.phone.configuration.Onboarding
 import dev.lucy.phone.configuration.PolicyRules
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
 
 data class AdminActions(
     val select: (Set<String>) -> Unit, val acknowledge: (String, Boolean) -> Unit,
     val maintenance: () -> Unit, val finish: () -> Unit, val temporaryInternet: () -> Unit,
     val filtering: () -> Unit, val apply: () -> Unit, val settings: (String) -> Unit,
     val browser: (String) -> Unit, val play: (String?) -> Unit, val openApp: (AppEntry) -> Unit,
-    val rotatePin: (String) -> Unit, val erase: (String) -> Unit, val refresh: () -> Unit,
+    val rotatePin: (String) -> Unit, val beginTotp: () -> Unit, val confirmTotp: (String) -> Unit,
+    val disableTotp: () -> Unit, val erase: (String) -> Unit, val refresh: () -> Unit,
 )
 
 @Composable private fun Heading(text: String) {
@@ -39,7 +47,8 @@ data class AdminActions(
 }
 
 @Composable fun Administration(state: HomeState, page: String, busy: Boolean, message: String,
-    forbidden: Set<String>, onPage: (String) -> Unit, onHome: () -> Unit, onLock: () -> Unit, actions: AdminActions) {
+    forbidden: Set<String>, totpEnrollmentUri: String, totpSetupKey: String, onPage: (String) -> Unit,
+    onHome: () -> Unit, onLock: () -> Unit, actions: AdminActions) {
     val pages = if (state.activated) linkedMapOf("apps" to "Allowed apps", "connect" to "System settings & accounts",
         "filter" to "Filtering & safety", "review" to "Review changes")
     else linkedMapOf("connect" to "1 · Connect & accounts", "apps" to "2 · Allow & set up apps",
@@ -50,6 +59,8 @@ data class AdminActions(
     var search by remember { mutableStateOf("") }
     var newPin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
+    var totpCode by remember { mutableStateOf("") }
+    var showTotpSetupKey by remember(totpEnrollmentUri) { mutableStateOf(false) }
     var eraseText by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -71,7 +82,7 @@ data class AdminActions(
                     fontSize = 29.sp, modifier = Modifier.padding(vertical = 16.dp))
                 if (page == "overview") {
                     Text(state.status, fontWeight = FontWeight.Medium)
-                    Text(if (state.activated) "Administrator tools control which apps are allowed, system setup, filtering, and recovery. Home-screen visibility can be changed without the administrator PIN from Phone controls."
+                    Text(if (state.activated) "Administrator tools control which apps are allowed, system setup, filtering, and recovery. Home-screen visibility can be changed without administrator authentication from Phone controls."
                         else "Set up the phone before restricting it. Connect, choose what belongs here, sign in, and test before enabling daily mode.",
                         modifier = Modifier.padding(vertical = 12.dp))
                     if (!state.owner) Text("Launcher preview only: no device-wide restrictions or enforced filtering. Device Owner enrollment must happen before adding accounts on a managed test device.")
@@ -83,7 +94,7 @@ data class AdminActions(
                     TextButton(onClick = { onPage("security") }) { Text("Security & recovery") }
                     TextButton(onClick = { onPage("details") }) { Text("Diagnostics & policy log") }
                     TextButton(onClick = onLock) { Text("Lock administration") }
-                    Text("Your administrator PIN is separate from the Android screen-lock PIN. For two minutes after use, returning to Administration does not require the PIN again. Lock administration before handing the phone back. Expiry, recreation, and process restart also lock it. Draft choices are retained.", fontSize = 13.sp)
+                    Text("Authenticator codes and the backup administrator PIN are separate from the Android screen-lock PIN. For 30 seconds after the last interaction, returning to Administration does not require another code. Lock administration before handing the phone back. Expiry, recreation, and process restart also lock it. Draft choices are retained.", fontSize = 13.sp)
                 } else {
                     if (page in setOf("connect", "apps", "filter") && state.activated && !state.maintenance) {
                         Text("Daily mode keeps Settings, Play, and unapproved browsers closed. Open a supervised session to use setup tools. Chrome can be selected separately for daily use.", fontSize = 13.sp)
@@ -193,19 +204,60 @@ data class AdminActions(
                             if (state.maintenance) OutlinedButton(enabled = !busy, onClick = { dialog = "finish" }) { Text("End session without applying draft") }
                         }
                         "security" -> {
-                            Text("Android screen lock protects everyday access. Lucy's administrator PIN protects management changes. They are separate credentials.")
+                            Text("Android screen lock protects everyday access. Authenticator codes normally protect Lucy management; the administrator PIN remains an explicit backup. They are separate credentials.")
                             OutlinedButton(enabled = tools, onClick = { actions.settings(Settings.ACTION_SECURITY_SETTINGS) }) { Text("Set Android screen lock") }
                             OutlinedButton(enabled = tools, onClick = { actions.settings(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS) }) { Text("Allow Lucy sound-mode access") }
                             if (Build.VERSION.SDK_INT >= 31) OutlinedButton(enabled = tools, onClick = { actions.settings(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM) }) { Text("Allow maintenance timer") }
                             if (!tools && !busy) Text("Open supervised setup from Administration to change Android settings.")
                             ConfirmationRow("The recovery code is stored offline", state.recoverySaved, !busy) { actions.acknowledge("recoverySaved", it) }
-                            Heading("Change administrator PIN")
-                            OutlinedTextField(newPin, { newPin = it.take(64) }, label = { Text("New PIN · at least eight digits") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
-                            OutlinedTextField(confirmPin, { confirmPin = it.take(64) }, label = { Text("Confirm new PIN") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
+                            Heading("Authenticator access")
+                            if (state.totpConfigured) {
+                                Text("Enabled. Administration opens with a current six-digit authenticator code. Each code can be accepted only once; the backup PIN remains available from the login screen.")
+                                OutlinedButton(enabled = !busy, onClick = actions.beginTotp) { Text("Replace authenticator") }
+                                TextButton(enabled = !busy, onClick = { dialog = "disableTotp" }) { Text("Disable authenticator") }
+                            } else if (totpEnrollmentUri.isBlank()) {
+                                Text("Enroll a trusted administrator's authenticator app. Setup is not enabled until a code from the new entry is verified.")
+                                Button(enabled = !busy, onClick = actions.beginTotp) { Text("Set up authenticator") }
+                            }
+                            if (totpEnrollmentUri.isNotBlank()) {
+                                Text("Scan this one-time QR code with a standard authenticator app, then enter its current code below. Leaving or locking Administration cancels this setup.",
+                                    fontSize = 13.sp, modifier = Modifier.padding(bottom = 12.dp))
+                                val qr = remember(totpEnrollmentUri) {
+                                    val matrix = QRCodeWriter().encode(totpEnrollmentUri, BarcodeFormat.QR_CODE, 640, 640,
+                                        mapOf(EncodeHintType.MARGIN to 2))
+                                    Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888).apply {
+                                        val pixels = IntArray(matrix.width * matrix.height) { index ->
+                                            if (matrix[index % matrix.width, index / matrix.width]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                                        }
+                                        setPixels(pixels, 0, matrix.width, 0, 0, matrix.width, matrix.height)
+                                    }.asImageBitmap()
+                                }
+                                Image(qr, "Authenticator enrollment QR code", Modifier.size(240.dp).testTag("totpEnrollmentQr"))
+                                TextButton(onClick = { showTotpSetupKey = !showTotpSetupKey }) {
+                                    Text(if (showTotpSetupKey) "Hide setup key" else "Can’t scan? Show setup key")
+                                }
+                                if (showTotpSetupKey) {
+                                    Text("Anyone with this key can generate administrator codes. Send it only to the intended administrator through a trusted encrypted channel. It disappears when you leave or lock Administration.",
+                                        color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                                    Text(totpSetupKey, fontFamily = FontFamily.Monospace, fontSize = 18.sp,
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).testTag("totpSetupKey"))
+                                    Text("Account: Lucy:Administrator · Time based · 6 digits · SHA-1 · 30 seconds",
+                                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                OutlinedTextField(totpCode, { totpCode = it.filter { digit -> digit in '0'..'9' }.take(6) },
+                                    label = { Text("Six-digit code") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    singleLine = true, modifier = Modifier.fillMaxWidth().testTag("totpEnrollmentCode"))
+                                Button(enabled = !busy && totpCode.length == 6, onClick = {
+                                    val code = totpCode; totpCode = ""; actions.confirmTotp(code)
+                                }, modifier = Modifier.testTag("confirmTotp")) { Text("Verify & enable") }
+                            }
+                            Heading("Change backup administrator PIN")
+                            OutlinedTextField(newPin, { newPin = it.take(64) }, label = { Text("New backup PIN · at least eight digits") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
+                            OutlinedTextField(confirmPin, { confirmPin = it.take(64) }, label = { Text("Confirm new backup PIN") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
                             Text("This also replaces the recovery code. The new code is shown once.", fontSize = 13.sp)
                             OutlinedButton(enabled = !busy && newPin.length >= 8 && newPin == confirmPin, onClick = {
                                 val pin = newPin; newPin = ""; confirmPin = ""; actions.rotatePin(pin)
-                            }) { Text("Replace PIN & recovery code") }
+                            }) { Text("Replace backup PIN & recovery code") }
                             if (state.maintenance) TextButton(onClick = { dialog = "erase" }) { Text("Decommission device…") }
                         }
                         "details" -> {
@@ -225,11 +277,12 @@ data class AdminActions(
         }
     }
     if (dialog.isNotEmpty()) {
-        val title = when (dialog) { "internet" -> "Use unfiltered setup internet?"; "maintenance" -> "Open supervised setup?"; "apply" -> "Apply this app allowlist?"; "erase" -> "Erase this device?"; else -> "End this session?" }
+        val title = when (dialog) { "internet" -> "Use unfiltered setup internet?"; "maintenance" -> "Open supervised setup?"; "apply" -> "Apply this app allowlist?"; "disableTotp" -> "Disable authenticator access?"; "erase" -> "Erase this device?"; else -> "End this session?" }
         val detail = when (dialog) {
             "internet" -> "Content filtering will be unavailable for up to 15 minutes, or until maintenance ends. Keep physical custody. Strict filtered DNS is restored on expiry, restart, or when you test/finish. If the provider remains unreachable, internet may stop again. This cannot make a daily-use filtering test pass."
             "maintenance" -> "For up to 30 minutes, you can install apps, sign in, and open Settings and browsers. Keep physical custody. Filtering stays enabled unless you separately confirm temporary internet."
             "apply" -> "Apply the displayed app draft and close setup tools. Keep the phone until the resulting status and essential phone tests are verified."
+            "disableTotp" -> "Future Administration access will use the backup administrator PIN until a new authenticator is enrolled."
             "erase" -> "This deletes all device data. Back up and prepare Google account / Factory Reset Protection credentials first. Type ERASE THIS DEVICE to confirm."
             else -> "Restore the current daily app policy and filtered DNS now. Your unapplied draft is retained."
         }
@@ -238,7 +291,7 @@ data class AdminActions(
         }, confirmButton = {
             TextButton(enabled = !busy && (dialog != "erase" || eraseText == "ERASE THIS DEVICE"), onClick = {
                 val action = dialog; dialog = ""
-                when (action) { "internet" -> actions.temporaryInternet(); "maintenance" -> actions.maintenance(); "apply" -> actions.apply(); "erase" -> actions.erase(eraseText); else -> actions.finish() }
+                when (action) { "internet" -> actions.temporaryInternet(); "maintenance" -> actions.maintenance(); "apply" -> actions.apply(); "disableTotp" -> actions.disableTotp(); "erase" -> actions.erase(eraseText); else -> actions.finish() }
             }) { Text(if (dialog == "erase") "Erase everything" else "Confirm") }
         }, dismissButton = { TextButton(onClick = { dialog = "" }) { Text("Cancel") } })
     }

@@ -4,11 +4,13 @@ A native Android minimalist launcher and local Device Policy Controller. Kotlin,
 
 **Daily Wi-Fi (0.3.6):** Home → Phone controls → Wi-Fi works without administrator authentication. Toggle Wi-Fi, select a saved or nearby network, or enter an SSID and password. Nearby scans require Android Location to be enabled; Lucy offers an explicit button when it is off. Enterprise and legacy WEP setup still require administrator assistance. Network passwords go to Android's Wi-Fi configuration and are not stored in Lucy's policy or logs. Filtering and daily app restrictions remain active.
 
-**Home and administration (0.3.9):** **Phone controls → Choose Home screen apps** lets the everyday user show or hide apps that an administrator has already approved. The administrator PIN is still required to add or approve apps, install software, open system setup, change filtering, or use recovery tools. Required phone apps stay on Home, new approvals start visible, existing Home choices survive later allowlist changes, and Home apps are sorted alphabetically.
+**Home and administration (0.3.9):** **Phone controls → Choose Home screen apps** lets the everyday user show or hide apps that an administrator has already approved. Administrator authentication is still required to add or approve apps, install software, open system setup, change filtering, or use recovery tools. Required phone apps stay on Home, new approvals start visible, existing Home choices survive later allowlist changes, and Home apps are sorted alphabetically.
 
-**Administrator session (0.3.11):** Successful PIN entry starts a two-minute in-memory administrator session. Returning to Administration during that window does not require the PIN again, including after visiting Home or a Lucy-launched setup tool. Administration hides on an unrelated app switch; re-entry still honors the unexpired token. **Lock administration**, expiry, activity recreation, process restart, and credential changes require the PIN again. The session does not extend supervised maintenance.
+**Administrator session (updated 0.4.0):** Successful administrator authentication starts a 30-second inactivity window. Returning to Administration during that window does not require authentication again, including after visiting Home or a Lucy-launched setup tool. Interaction within Administration refreshes the window. Administration hides on an unrelated app switch; re-entry still honors an unexpired token. **Lock administration**, expiry, activity recreation, process restart, and credential changes require authentication again. The session does not extend supervised maintenance.
 
 **Appearance (0.3.12):** **Phone controls → Appearance** offers System, Light, and Dark modes without administrator authentication. The selection persists across Lucy restarts and reboots, applies to Home, everyday controls, onboarding, and Administration, and does not alter the app allowlist or Device Owner policy.
+
+**Authenticator administration (0.4.0):** A current six-digit TOTP code is the normal Administration login after enrollment. **Administration → Security & recovery** shows a one-time QR code or grouped manual setup key and requires a valid code before enabling it. The administrator PIN remains behind an explicit backup option. Codes are checked locally with narrow clock skew, share persistent backoff with PIN/recovery attempts, and cannot be reused; the secret is encrypted with an Android Keystore key. Authentication grants only the 30-second UI session and never starts or extends supervised maintenance.
 
 **Start with launcher mode in the emulator.** Managed mode is implemented but is not certified for daily physical-phone use. See [acceptance results](docs/acceptance.md) for tested behavior and remaining gates.
 
@@ -30,7 +32,7 @@ Keep that emulator running. In another terminal:
 node scripts/device.mjs install emulator-5580
 ```
 
-Lucy becomes the virtual phone's HOME app. App buttons launch installed Android apps; Home returns to Lucy. **Phone controls** covers everyday sound, display, Wi-Fi, and Home-screen choices; **Administration** uses a PIN to control which apps are approved and access setup tools. Launcher mode does not change device policies. No default administrator credential is built in.
+Lucy becomes the virtual phone's HOME app. App buttons launch installed Android apps; Home returns to Lucy. **Phone controls** covers everyday sound, display, Wi-Fi, and Home-screen choices; **Administration** uses an enrolled authenticator code, or the explicit backup PIN, to control which apps are approved and access setup tools. Launcher mode does not change device policies. No default administrator credential is built in.
 
 Alternatively, open this directory in Android Studio, select a virtual device, and Run. Choose **Settings → Apps → Default apps → Home app → Lucy** if running without the helper.
 
@@ -64,7 +66,7 @@ Lucy. Normal daily sound changes then work without opening Android Settings.
 - Optional daily Chrome: approve it in **Allow & set up apps**, review, and apply the draft. Removing approval blocks it again in managed mode; hiding it from **Phone controls → Choose Home screen apps** only removes its launcher button. Chrome's own DNS settings and web content are not fully controlled by Lucy; see the [setup and filtering limits](docs/onboarding.md#which-apps-belong-on-the-phone).
 - Device Owner provisioning components, package inventory, explicit system dependencies, persistent HOME, multi-app lock task, app/install/settings restrictions, read-back checks, and compensating rollback.
 - Enforced Cloudflare Families Private DNS and safe category probes, with explicit network failure status.
-- Salted PIN/recovery verifiers, persistent backoff, expiring admin sessions, protected UI, local policy log, and backup exclusion.
+- Authenticator-first RFC 6238 login with Android Keystore-encrypted secrets, replay prevention, salted PIN/recovery verifiers, shared persistent backoff, expiring admin sessions, protected UI, local policy log, and backup exclusion.
 - Supervised maintenance with foreground status, exact expiry alarm, persistent restoration state, boot/package reconciliation, and signed-update support.
 - Explicit, warned temporary internet for supervised setup (15 minutes maximum), with offline strict-DNS restoration and separate native normal-internet/category test results.
 - QR-enrollment payload generator and authenticated decommissioning confirmation.

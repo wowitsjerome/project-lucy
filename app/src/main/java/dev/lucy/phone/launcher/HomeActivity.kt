@@ -14,8 +14,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -25,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -76,6 +77,7 @@ class HomeActivity : ComponentActivity() {
     private var resumed = false
     private var adminPage by mutableStateOf("overview")
     private val adminSessionBoundary = AdminSessionBoundary()
+    private var appearanceMode by mutableStateOf(AppearanceMode.SYSTEM)
     private var ringerMode by mutableIntStateOf(AudioManager.RINGER_MODE_NORMAL)
     private fun refreshRingerMode() {
         ringerMode = getSystemService(AudioManager::class.java).ringerMode
@@ -103,19 +105,26 @@ class HomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge(statusBarStyle = SystemBarStyle.light(0xFFF5F4EF.toInt(), 0xFFF5F4EF.toInt()),
-            navigationBarStyle = SystemBarStyle.dark(0xFF242A25.toInt()))
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
+        appearanceMode = app.appearance.get()
         window.isNavigationBarContrastEnforced = false
         val handoff = app.consumeAdminActivityHandoff()
         if (handoff != null && app.auth.validSession(handoff.session)) {
             session = handoff.session; adminPage = handoff.page; navigate("admin")
         } else app.adminReturnPage?.let { adminPage = it; navigate("login") }
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF52654D), background = Color(0xFFF5F4EF),
-                surface = Color(0xFFF5F4EF), onSurface = Color(0xFF242A25), onBackground = Color(0xFF242A25))) {
+            val dark = appearanceMode.usesDarkTheme(isSystemInDarkTheme())
+            val colors = lucyColorScheme(dark)
+            val navigationBar = if (dark) Color(0xFF090B09) else Color(0xFF242A25)
+            SideEffect {
+                val background = colors.background.toArgb()
+                enableEdgeToEdge(
+                    statusBarStyle = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background),
+                    navigationBarStyle = SystemBarStyle.dark(navigationBar.toArgb()))
+                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
+            }
+            MaterialTheme(colorScheme = colors) {
                 // Paint a high-contrast backing even when the emulator's live nav-mode switch loses tint state.
-                Surface(Modifier.fillMaxSize(), color = Color(0xFF242A25)) {
+                Surface(Modifier.fillMaxSize(), color = navigationBar) {
                     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
                         Surface(Modifier.fillMaxSize()) { Content() }
                     }
@@ -331,7 +340,7 @@ class HomeActivity : ComponentActivity() {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("L U C Y", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
-                    Text(state.status, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp).testTag("status"), color = Color(0xFF74796F))
+                    Text(state.status, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp).testTag("status"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = {
                     changeRingerMode(when (ringerMode) {
@@ -354,7 +363,7 @@ class HomeActivity : ComponentActivity() {
             }
             Spacer(Modifier.height(20.dp))
             Text(now.format(DateTimeFormatter.ofPattern("h:mm")), fontSize = 76.sp, fontWeight = FontWeight.Light, letterSpacing = (-3).sp)
-            Text(now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")), fontSize = 15.sp, color = Color(0xFF74796F))
+            Text(now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")), fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(18.dp))
             if (state.administratorEntry in setOf(AdministratorEntry.SETUP, AdministratorEntry.LOGIN) && !state.activated) {
                 OutlinedButton(enabled = !busy, onClick = { adminPage = "overview"; openAdministration() }) {
@@ -374,7 +383,7 @@ class HomeActivity : ComponentActivity() {
                     "Loading your saved setup…" else "Your approved apps will appear here.", Modifier.padding(vertical = 24.dp))
             }
             Spacer(Modifier.height(12.dp))
-            HorizontalDivider(color = Color(0xFFD6D9D0))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 TextButton(onClick = { navigate("controls") }) { Text("Phone controls") }
                 TextButton(enabled = !busy && state.administratorEntry != AdministratorEntry.LOADING,
@@ -382,7 +391,7 @@ class HomeActivity : ComponentActivity() {
                     Text(if (state.administratorEntry == AdministratorEntry.LOADING) "Loading administration…" else "Administration")
                 }
             }
-            if (!state.activated) Text("A little more room for what matters.", fontSize = 12.sp, color = Color(0xFF74796F), modifier = Modifier.padding(top = 12.dp))
+            if (!state.activated) Text("A little more room for what matters.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
             Notice()
         }
     }
@@ -534,6 +543,17 @@ class HomeActivity : ComponentActivity() {
         var brightness by remember { mutableFloatStateOf(window.attributes.screenBrightness.takeIf { it >= 0 } ?: 0.5f) }
         Page("Phone controls") {
             LaunchedEffect(Unit) { while (true) { refreshRingerMode(); delay(1_000) } }
+            Text("Appearance", fontWeight = FontWeight.Medium)
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppearanceMode.entries.forEach { mode ->
+                    FilterChip(selected = appearanceMode == mode, onClick = {
+                        app.appearance.set(mode)
+                        appearanceMode = mode
+                    }, label = { Text(mode.label) }, modifier = Modifier.testTag("appearance:${mode.name}"))
+                }
+            }
+            Text("System follows Android's light or dark appearance. This choice applies only to Lucy screens.", fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 20.dp))
             Text("Sound mode: ${ringerLabel()}", modifier = Modifier.testTag("soundMode"))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Sound" to AudioManager.RINGER_MODE_NORMAL, "Vibrate" to AudioManager.RINGER_MODE_VIBRATE,

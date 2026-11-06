@@ -8,10 +8,17 @@ Status: onboarding/administration revision implemented for local development; ve
 - Build: Gradle 8.13, AGP 8.13.2, Kotlin 2.1.20, compile/target SDK 35, minimum API 30.
 - Emulators: isolated `Lucy_Launcher` (5580) and `Lucy_Managed` (5582).
 - System image: Google Play ARM64 Android 16/API 36, build `BE2A.250530.026.D1`.
-- App: `dev.lucy.phone`, version 0.3.11; debug/test-only policy deliberately retains ADB. Earlier-version evidence below is historical unless explicitly rerun.
+- App: `dev.lucy.phone`, version 0.3.12; debug/test-only policy deliberately retains ADB. Earlier-version evidence below is historical unless explicitly rerun.
 - Physical baseline used for the latest focused checks: Samsung SM-S918U, Android 14. Broader carrier/device certification remains outstanding.
 
 ## Evidence and scope
+
+### Persisted appearance modes · 0.3.12 · 2026-11-06
+
+- Added ungated **Phone controls → Appearance** choices for System, Light, and Dark. System follows Android; explicit Light/Dark apply across every Lucy screen. The preference is synchronously persisted in device-protected app storage and is independent of policy state.
+- `bash scripts/check.sh` passed: unit tests, Android lint, debug/instrumentation/release compilation, and helper/static checks. Unit coverage verifies safe stored-value parsing, System resolution, and WCAG AA contrast for core text/background pairs. Launcher instrumentation covers all three controls and persistence across Activity recreation.
+- Installed on Samsung SM-S918U as versionCode 17. Live inspection verified Light and Dark on Phone controls and Dark on the main launcher, including readable status/navigation bars, selected controls, secondary text, disabled controls, app labels, and footer actions. The original System preference was restored and read back from persisted storage.
+- Switching appearance did not change policy revision 16, the 33 allowed/Home apps, maintenance state, or lock-task enforcement; policy errors remained empty. A physical reboot persistence test was not performed in this focused pass.
 
 ### Short-lived administrator session · 0.3.11 · 2026-11-06
 

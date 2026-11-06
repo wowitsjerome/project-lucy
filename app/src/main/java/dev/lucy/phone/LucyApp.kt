@@ -9,6 +9,7 @@ import dev.lucy.phone.configuration.AdminAuth
 import dev.lucy.phone.configuration.PolicyStore
 import dev.lucy.phone.launcher.AdminActivityHandoff
 import dev.lucy.phone.launcher.AdminActivityHandoffStore
+import dev.lucy.phone.launcher.AppearanceStore
 import dev.lucy.phone.policy.PolicyEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.Executors
@@ -21,6 +22,7 @@ class LucyApp : Application() {
     private val adminActivityHandoff = AdminActivityHandoffStore(SystemClock::elapsedRealtime)
     val store by lazy { PolicyStore(this) }
     val auth by lazy { AdminAuth(this, store) }
+    val appearance by lazy { AppearanceStore(this) }
     val engine by lazy { PolicyEngine(this) }
     internal fun prepareAdminActivityHandoff(session: String, page: String) {
         // Only bridges Lucy's immediate lock-task exit/recreation; external tools otherwise rely

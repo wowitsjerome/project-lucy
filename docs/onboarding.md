@@ -18,6 +18,8 @@ Successful PIN entry creates a two-minute in-memory administrator session. Retur
 
 **Phone controls** does not require the administrator PIN. It brings everyday sound, display, Wi-Fi, and Home-screen choices together. **Choose Home screen apps** lets the user show or hide apps that are already approved, while required phone functions remain visible. Hiding an app removes its Lucy Home button; it does not uninstall the app, erase its data, or revoke its approved access.
 
+**Appearance** in Phone controls offers System, Light, and Dark. System follows Android's current appearance; Light and Dark override it for Lucy screens only. The choice persists across app restarts and device reboots and does not change which apps are approved or relax any managed policy.
+
 **Administration** remains PIN-protected. It controls the security allowlist, installation and updates, accounts and Android settings, filtering, maintenance, diagnostics, and recovery. Newly approved apps start visible on Home. Removing approval also removes the app from Home and daily lock-task access. Existing Home visibility choices are preserved when other allowlist changes are applied.
 
 ## The four onboarding pages

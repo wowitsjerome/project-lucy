@@ -8,6 +8,8 @@ A native Android minimalist launcher and local Device Policy Controller. Kotlin,
 
 **Administrator session (0.3.11):** Successful PIN entry starts a two-minute in-memory administrator session. Returning to Administration during that window does not require the PIN again, including after visiting Home or a Lucy-launched setup tool. Administration hides on an unrelated app switch; re-entry still honors the unexpired token. **Lock administration**, expiry, activity recreation, process restart, and credential changes require the PIN again. The session does not extend supervised maintenance.
 
+**Appearance (0.3.12):** **Phone controls → Appearance** offers System, Light, and Dark modes without administrator authentication. The selection persists across Lucy restarts and reboots, applies to Home, everyday controls, onboarding, and Administration, and does not alter the app allowlist or Device Owner policy.
+
 **Start with launcher mode in the emulator.** Managed mode is implemented but is not certified for daily physical-phone use. See [acceptance results](docs/acceptance.md) for tested behavior and remaining gates.
 
 **Onboarding:** read [the administrator walkthrough](docs/onboarding.md). The flow is **Connect & accounts → Allow & set up apps → Test filtering → Review & finish**. Do not enable daily restrictions before installing, signing in, and verifying internet access.

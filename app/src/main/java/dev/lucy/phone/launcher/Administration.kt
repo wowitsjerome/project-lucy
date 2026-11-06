@@ -39,7 +39,7 @@ data class AdminActions(
 }
 
 @Composable fun Administration(state: HomeState, page: String, busy: Boolean, message: String,
-    forbidden: Set<String>, onPage: (String) -> Unit, onHome: () -> Unit, actions: AdminActions) {
+    forbidden: Set<String>, onPage: (String) -> Unit, onHome: () -> Unit, onLock: () -> Unit, actions: AdminActions) {
     val pages = if (state.activated) linkedMapOf("apps" to "Allowed apps", "connect" to "System settings & accounts",
         "filter" to "Filtering & safety", "review" to "Review changes")
     else linkedMapOf("connect" to "1 · Connect & accounts", "apps" to "2 · Allow & set up apps",
@@ -82,7 +82,8 @@ data class AdminActions(
                     }
                     TextButton(onClick = { onPage("security") }) { Text("Security & recovery") }
                     TextButton(onClick = { onPage("details") }) { Text("Diagnostics & policy log") }
-                    Text("Your administrator PIN is separate from the Android screen-lock PIN. Leaving Lucy locks administration; after signing in again, you return to the same setup page. Draft choices are retained.", fontSize = 13.sp)
+                    TextButton(onClick = onLock) { Text("Lock administration") }
+                    Text("Your administrator PIN is separate from the Android screen-lock PIN. For two minutes after use, returning to Administration does not require the PIN again. Lock administration before handing the phone back. Expiry, recreation, and process restart also lock it. Draft choices are retained.", fontSize = 13.sp)
                 } else {
                     if (page in setOf("connect", "apps", "filter") && state.activated && !state.maintenance) {
                         Text("Daily mode keeps Settings, Play, and unapproved browsers closed. Open a supervised session to use setup tools. Chrome can be selected separately for daily use.", fontSize = 13.sp)

@@ -12,6 +12,8 @@ Create a separate administrator PIN, save the one-time recovery code offline, an
 
 On startup, **Loading administration…** stays disabled until Lucy reads the saved setup. An existing administrator is sent to the existing-PIN screen, never new-PIN setup. A read failure or a managed device with missing credentials shows **Administrator access unavailable** with a retry option; it does not reset credentials. New-PIN setup is offered only after confirming there is no administrator and no active managed policy.
 
+Successful PIN entry creates a two-minute in-memory administrator session. Returning to Administration during that window does not require the PIN again, including after visiting Home or a setup tool opened by Lucy. An unrelated app switch hides the management UI but does not discard an otherwise-valid token. Use **Lock administration** before handing the phone back. Expiry, activity recreation, process restart, or credential changes also require the PIN again. Lucy's supervised-setup task transition has a one-time, 15-second in-process handoff so recreating Home during that transition does not demand the PIN again. The UI session never extends the separate supervised-maintenance lease or relaxes policy by itself.
+
 ## Everyday Home choices versus administration
 
 **Phone controls** does not require the administrator PIN. It brings everyday sound, display, Wi-Fi, and Home-screen choices together. **Choose Home screen apps** lets the user show or hide apps that are already approved, while required phone functions remain visible. Hiding an app removes its Lucy Home button; it does not uninstall the app, erase its data, or revoke its approved access.
@@ -78,7 +80,7 @@ For an optional browser cross-check, use the three named link buttons during sup
 
 ## Returning to administration later
 
-Open **Administration → Open supervised setup**, authenticate, and confirm physical custody. A 30-minute session exposes Settings, Play, and browser tools. Filtered DNS stays active unless you separately confirm temporary internet. The two-minute administrator UI session and the longer maintenance lease are separate: leaving for sign-in locks the former, not the latter.
+Open **Administration → Open supervised setup**, authenticate, and confirm physical custody. A 30-minute session exposes Settings, Play, and browser tools. Filtered DNS stays active unless you separately confirm temporary internet. The two-minute administrator UI session and the longer maintenance lease are separate: Lucy-launched sign-in/setup tools reuse the UI session only while it remains active, and UI-session expiry does not end or extend maintenance.
 
 Install/update/sign in → refresh/approve apps → confirm their setup → test filtering → **Apply draft & return to daily mode**. Applying a draft can end maintenance directly; there is no need to hide an app again before it can be approved.
 

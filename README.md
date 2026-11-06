@@ -6,6 +6,8 @@ A native Android minimalist launcher and local Device Policy Controller. Kotlin,
 
 **Home and administration (0.3.9):** **Phone controls → Choose Home screen apps** lets the everyday user show or hide apps that an administrator has already approved. The administrator PIN is still required to add or approve apps, install software, open system setup, change filtering, or use recovery tools. Required phone apps stay on Home, new approvals start visible, existing Home choices survive later allowlist changes, and Home apps are sorted alphabetically.
 
+**Administrator session (0.3.11):** Successful PIN entry starts a two-minute in-memory administrator session. Returning to Administration during that window does not require the PIN again, including after visiting Home or a Lucy-launched setup tool. Administration hides on an unrelated app switch; re-entry still honors the unexpired token. **Lock administration**, expiry, activity recreation, process restart, and credential changes require the PIN again. The session does not extend supervised maintenance.
+
 **Start with launcher mode in the emulator.** Managed mode is implemented but is not certified for daily physical-phone use. See [acceptance results](docs/acceptance.md) for tested behavior and remaining gates.
 
 **Onboarding:** read [the administrator walkthrough](docs/onboarding.md). The flow is **Connect & accounts → Allow & set up apps → Test filtering → Review & finish**. Do not enable daily restrictions before installing, signing in, and verifying internet access.

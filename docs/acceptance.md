@@ -8,10 +8,17 @@ Status: onboarding/administration revision implemented for local development; ve
 - Build: Gradle 8.13, AGP 8.13.2, Kotlin 2.1.20, compile/target SDK 35, minimum API 30.
 - Emulators: isolated `Lucy_Launcher` (5580) and `Lucy_Managed` (5582).
 - System image: Google Play ARM64 Android 16/API 36, build `BE2A.250530.026.D1`.
-- App: `dev.lucy.phone`, version 0.3.9; debug/test-only policy deliberately retains ADB. Earlier-version evidence below is historical unless explicitly rerun.
+- App: `dev.lucy.phone`, version 0.3.11; debug/test-only policy deliberately retains ADB. Earlier-version evidence below is historical unless explicitly rerun.
 - Physical baseline used for the latest focused checks: Samsung SM-S918U, Android 14. Broader carrier/device certification remains outstanding.
 
 ## Evidence and scope
+
+### Short-lived administrator session · 0.3.11 · 2026-11-06
+
+- Successful PIN entry now creates the intended two-minute in-memory session. Leaving for Home or an unrelated app hides management UI but does not discard a still-valid token; explicitly reopening Administration during the window does not ask for the PIN again. **Lock administration**, timeout, activity recreation, process restart, and credential changes discard access.
+- A Lucy-launched setup tool may preserve the active admin screen across one expected pause; the grant is single-use and canceled after a failed/no-op launch. Lucy's lock-task exit has a separate one-time, 15-second in-process handoff because that OEM transition recreates Home. Neither mechanism survives process restart or extends maintenance.
+- `bash scripts/check.sh` passed: unit tests, Android lint, debug/instrumentation/release compilation, and helper/static checks. New unit tests cover ordinary pauses returning away from the admin screen, single-use external-tool grants, canceled/consumed grants, and expiry/single-use behavior of the activity-recreation handoff.
+- Installed on the managed Samsung SM-S918U as versionCode 16. Live testing confirmed supervised setup and Lucy-launched system Settings return to authenticated Administration, and the user confirmed leaving Administration and reopening it seconds later no longer prompts for the PIN. Test cleanup restored lock task, retained all 33 allowed/Home apps at policy revision 16, and reported no policy errors.
 
 ### Consolidated Phone controls · 0.3.9 · 2026-11-06
 

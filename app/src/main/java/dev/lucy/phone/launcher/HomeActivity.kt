@@ -75,6 +75,7 @@ class HomeActivity : ComponentActivity() {
     private var recoveryCode by mutableStateOf("")
     private var resumed = false
     private var adminPage by mutableStateOf("overview")
+    private val adminSessionBoundary = AdminSessionBoundary()
     private var ringerMode by mutableIntStateOf(AudioManager.RINGER_MODE_NORMAL)
     private fun refreshRingerMode() {
         ringerMode = getSystemService(AudioManager::class.java).ringerMode
@@ -106,7 +107,10 @@ class HomeActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(0xFF242A25.toInt()))
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
         window.isNavigationBarContrastEnforced = false
-        app.adminReturnPage?.let { adminPage = it; navigate("login") }
+        val handoff = app.consumeAdminActivityHandoff()
+        if (handoff != null && app.auth.validSession(handoff.session)) {
+            session = handoff.session; adminPage = handoff.page; navigate("admin")
+        } else app.adminReturnPage?.let { adminPage = it; navigate("login") }
         setContent {
             MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF52654D), background = Color(0xFFF5F4EF),
                 surface = Color(0xFFF5F4EF), onSurface = Color(0xFF242A25), onBackground = Color(0xFF242A25))) {
@@ -122,7 +126,9 @@ class HomeActivity : ComponentActivity() {
         lifecycleScope.launch {
             while (true) {
                 delay(1_000)
-                if (screen == "admin" && !app.auth.validSession(session)) { session = null; navigate("login"); message = "Session locked after inactivity" }
+                if (screen == "admin" && !app.auth.validSession(session)) {
+                    lockAdministration(); navigate("login"); message = "Session locked after inactivity"
+                }
                 if (resumed) ensureLockTask()
             }
         }
@@ -133,7 +139,13 @@ class HomeActivity : ComponentActivity() {
             }
         } }
     }
-    override fun onResume() { super.onResume(); resumed = true; refreshRingerMode(); ensureLockTask(); refresh() }
+    override fun onResume() {
+        super.onResume(); resumed = true
+        if (screen == "admin" && !app.auth.validSession(session)) {
+            lockAdministration(); navigate("login"); message = "Administrator session expired; enter your PIN again"
+        }
+        refreshRingerMode(); ensureLockTask(); refresh()
+    }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) ensureLockTask()
@@ -142,13 +154,20 @@ class HomeActivity : ComponentActivity() {
         resumed = false
         if (screen == "admin") {
             app.adminReturnPage = adminPage
-            app.auth.lock(); session = null; screen = "login"
+            if (!adminSessionBoundary.shouldPreserveAdminOnPause(pausingAdministration = true)) {
+                // Hide management UI on an unrelated app switch, but keep the short-lived token
+                // so explicitly re-entering Administration does not demand the PIN again.
+                screen = "home"
+                app.adminReturnPage = null
+            }
+        } else {
+            adminSessionBoundary.shouldPreserveAdminOnPause(pausingAdministration = false)
         }
         super.onPause()
     }
     override fun onUserInteraction() {
         super.onUserInteraction()
-        session?.let { if (app.auth.validSession(it)) app.auth.requireSession(it) }
+        if (screen == "admin") session?.let { if (app.auth.validSession(it)) app.auth.requireSession(it) }
     }
     private fun navigate(target: String) {
         screen = target; message = ""
@@ -156,7 +175,31 @@ class HomeActivity : ComponentActivity() {
         if (target in setOf("setup", "login", "recover", "admin", "adminUnavailable", "wifi")) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
+    private fun lockAdministration() {
+        app.clearAdminActivityHandoff()
+        app.auth.lock()
+        session = null
+    }
+    private fun expectAdminToolPause() {
+        adminSessionBoundary.expectExternalPause()
+        // A failed/no-op activity launch must not authorize some unrelated later app switch.
+        window.decorView.postDelayed({ if (resumed) adminSessionBoundary.cancelExternalPause() }, 1_000)
+    }
+    private fun startExpectedAdminActivity(intent: Intent) {
+        if (screen == "admin") expectAdminToolPause()
+        try { startActivity(intent) }
+        catch (failure: Exception) {
+            adminSessionBoundary.cancelExternalPause()
+            throw failure
+        }
+    }
     private fun openAdministration() {
+        if (app.auth.validSession(session)) {
+            app.auth.requireSession(session ?: "")
+            navigate("admin")
+            return
+        }
+        lockAdministration()
         when (state.administratorEntry) {
             AdministratorEntry.LOADING -> Unit
             AdministratorEntry.SETUP -> navigate("setup")
@@ -256,7 +299,7 @@ class HomeActivity : ComponentActivity() {
                 app.auth.requireSession(session ?: "")
                 check(state.maintenance) { "Enter maintenance first" }
             }
-            startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).apply {
+            startExpectedAdminActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).apply {
                 if (action == Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM) data = android.net.Uri.parse("package:$packageName")
             })
         }.onFailure { message = it.message ?: "Settings unavailable" }
@@ -265,7 +308,7 @@ class HomeActivity : ComponentActivity() {
     @Composable private fun Content() {
         BackHandler {
             if (screen == "admin" && adminPage != "overview") adminPage = "overview"
-            else { app.auth.lock(); session = null; recoveryCode = ""; navigate("home") }
+            else { recoveryCode = ""; navigate("home") }
         }
         when (screen) {
             "home" -> Home()
@@ -367,7 +410,7 @@ class HomeActivity : ComponentActivity() {
     }
     @Composable private fun Page(title: String, backScreen: String = "home", content: @Composable ColumnScope.() -> Unit) {
         Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp)) {
-            TextButton(onClick = { app.auth.lock(); session = null; recoveryCode = ""; navigate(backScreen) }) {
+            TextButton(onClick = { recoveryCode = ""; navigate(backScreen) }) {
                 Text(if (backScreen == "home") "← Home" else "← Phone controls")
             }
             Text(title, fontSize = 32.sp, fontWeight = FontWeight.Light, modifier = Modifier.padding(vertical = 18.dp))
@@ -429,7 +472,7 @@ class HomeActivity : ComponentActivity() {
         runCatching {
             app.auth.requireSession(session ?: "")
             check(!app.store.configured() || app.engine.inMaintenance()) { "Start supervised maintenance to open setup tools" }
-            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            startExpectedAdminActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }.onFailure { message = it.message ?: "This setup tool is not installed or available on this device" }
     }
     @Composable private fun Admin() {
@@ -437,7 +480,8 @@ class HomeActivity : ComponentActivity() {
             state = state, page = adminPage, busy = busy, message = message,
             forbidden = remember(state.catalog) { app.engine.inventory.forbidden() },
             onPage = { adminPage = it; message = "" },
-            onHome = { app.auth.lock(); session = null; navigate("home") },
+            onHome = { navigate("home") },
+            onLock = { lockAdministration(); navigate("home") },
             actions = AdminActions(
                 select = { selected -> work { app.engine.saveDraft(session ?: "", selected); "Draft saved. Daily apps are unchanged until you apply it." } },
                 acknowledge = { key, value -> work { app.engine.acknowledge(session ?: "", key, value); "Checklist saved" } },
@@ -454,7 +498,11 @@ class HomeActivity : ComponentActivity() {
                     app.engine.beginMaintenance(session ?: "") {
                         val exit = FutureTask<Unit> {
                             app.adminReturnPage = "connect"
-                            if (app.engine.lockTaskRunning()) stopLockTask()
+                            if (app.engine.lockTaskRunning()) {
+                                app.prepareAdminActivityHandoff(session ?: "", "connect")
+                                expectAdminToolPause()
+                                stopLockTask()
+                            }
                         }
                         runOnUiThread(exit)
                         exit.get(5, TimeUnit.SECONDS)

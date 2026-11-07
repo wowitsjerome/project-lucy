@@ -16,6 +16,14 @@ A native Android minimalist launcher and local Device Policy Controller. Kotlin,
 
 **Onboarding:** read [the administrator walkthrough](docs/onboarding.md). The flow is **Connect & accounts → Allow & set up apps → Test filtering → Review & finish**. Do not enable daily restrictions before installing, signing in, and verifying internet access.
 
+## Screenshots
+
+| Light | Dark |
+| --- | --- |
+| ![Lucy Home in light mode](docs/screenshots/lucy-home-light.png) | ![Lucy Home in dark mode](docs/screenshots/lucy-home-dark.png) |
+| ![Phone controls in light mode](docs/screenshots/phone-controls-light.png) | ![Phone controls in dark mode](docs/screenshots/phone-controls-dark.png) |
+| ![Home-screen app visibility in light mode](docs/screenshots/home-apps-light.png) | ![Home-screen app visibility in dark mode](docs/screenshots/home-apps-dark.png) |
+
 ## Run locally
 
 Prerequisites: Android Studio, JDK 17+ (Studio's bundled JBR works), Android SDK platform 35, and Node 18+ for the emulator helpers. The helpers default to the installed Android 16 Google Play ARM64 image on this Mac.
